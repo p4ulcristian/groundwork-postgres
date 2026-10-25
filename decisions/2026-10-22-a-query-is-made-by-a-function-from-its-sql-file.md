@@ -1,5 +1,7 @@
 # A query is made by a function from its .sql file
 
+> **Changed in part** by [A .sql file is valid SQL: columns by their real names, a param is param('name')](2026-10-26-a-sql-file-is-valid-sql-a-param-is-param-name.md) (2026-10-26): a param is `param('name')`, not `:name`.
+
 > **Added to** on 2026-10-22: `make-query-from-sql-text` makes a query from SQL text made by code, for groundwork.schema's statements (a table's statements are made from data, per Groundwork's decision "A table is one map").
 
 > Changes in part Groundwork's decision "SQL lives only in files": a query is `(def q (make-query-from-sql-file "path.sql"))`, not `(pg/defsql q)`.

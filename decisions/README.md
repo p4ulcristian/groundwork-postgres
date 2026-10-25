@@ -25,3 +25,4 @@ The first three were made while cellar was a library inside Groundwork, a Clojur
 - [:functions may be SQL text a library makes, as well as files](2026-10-23-functions-may-be-sql-text-a-library-makes.md)
 - [A column changes type by a change the plan understands](2026-10-23-a-column-changes-type-by-a-change-the-plan-understands.md)
 - [A transaction keeps work to run after its commit; work that must happen is a job](2026-10-23-a-transaction-keeps-work-to-run-after-its-commit.md)
+- [A .sql file is valid SQL: columns by their real names, a param is param('name')](2026-10-26-a-sql-file-is-valid-sql-a-param-is-param-name.md)
