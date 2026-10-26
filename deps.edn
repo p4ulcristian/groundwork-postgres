@@ -3,7 +3,7 @@
 {:paths ["source-code"]
 
  :deps
- {com.github.seancorfield/next.jdbc {:mvn/version "1.4.70"}
+ {com.github.seancorfield/next.jdbc {:mvn/version "1.4.72"}
   org.postgresql/postgresql         {:mvn/version "42.7.14"}
   com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
   ;; HikariCP writes through SLF4J: this hands its lines to java.util.logging,
