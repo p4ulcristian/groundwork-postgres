@@ -22,4 +22,4 @@ JOIN pg_class c     ON c.oid = con.conrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_class fc ON fc.oid = con.confrelid
 LEFT JOIN pg_namespace fn ON fn.oid = fc.relnamespace
-WHERE n.nspname = ANY (string_to_array(:folders, ',')) AND NOT (n.nspname = 'groundwork_postgres' AND c.relname = 'changes_done')
+WHERE n.nspname = ANY (string_to_array(param('folders'), ',')) AND NOT (n.nspname = 'groundwork_postgres' AND c.relname = 'changes_done')

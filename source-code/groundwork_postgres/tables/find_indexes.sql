@@ -15,4 +15,4 @@ FROM pg_index ix
 JOIN pg_class i     ON i.oid = ix.indexrelid
 JOIN pg_class t     ON t.oid = ix.indrelid
 JOIN pg_namespace n ON n.oid = t.relnamespace
-WHERE n.nspname = ANY (string_to_array(:folders, ',')) AND NOT (n.nspname = 'groundwork_postgres' AND t.relname = 'changes_done')
+WHERE n.nspname = ANY (string_to_array(param('folders'), ',')) AND NOT (n.nspname = 'groundwork_postgres' AND t.relname = 'changes_done')

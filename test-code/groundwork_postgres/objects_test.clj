@@ -66,7 +66,7 @@
             (is (= ["CREATE EXTENSION" "SET LOCAL check_function_bodies" "-- How many jobs" "CREATE TABLE jobs"]
                    (map #(subs (:sql %) 0 (min (count (:sql %)) (count %2))) (take 4 instant)
                         ["CREATE EXTENSION" "SET LOCAL check_function_bodies" "-- How many jobs" "CREATE TABLE jobs"])))
-            (is (= ["view jobs_per_shop from postgres/objects/jobs_per_shop.sql" "view busy_shops from postgres/objects/busy_shops.sql"]
+            (is (= ["view jobs_per_shop from groundwork_postgres/objects/jobs_per_shop.sql" "view busy_shops from groundwork_postgres/objects/busy_shops.sql"]
                    (map :why (take-last 2 instant))))))
         (migrate-and-wait! pool declared [])
         (is (= nothing-to-do (plan-of pool declared [])) "and then nothing differs: defaults, check, function, views")
@@ -91,7 +91,7 @@
         (run-sql! pool (str "INSERT INTO jobs (job__shop_id) VALUES ('" (random-uuid) "')"))
         (testing "another body: replaced, nothing else"
           (let [changed (assoc declared :functions ["groundwork_postgres/objects/count_jobs_done.sql"])]
-            (is (= ["SET LOCAL check_function_bodies = off" "function public.count_jobs from postgres/objects/count_jobs_done.sql"]
+            (is (= ["SET LOCAL check_function_bodies = off" "function public.count_jobs from groundwork_postgres/objects/count_jobs_done.sql"]
                    (map #(if (str/starts-with? (:sql %) "SET") (:sql %) (:why %)) (:instant (plan-of pool changed [])))))
             (migrate-and-wait! pool changed [])
             (is (= nothing-to-do (plan-of pool changed [])))))

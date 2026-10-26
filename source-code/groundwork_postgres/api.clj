@@ -8,7 +8,13 @@
      (database/find-rows pool find-orders-of-shop {:order/shop-id 7})
      ;=> [{:order/id 42 :order/total 120.50M} …]
 
-   In a .sql file a param is :name and a column entity__field comes back as
+   A .sql file is SQL Postgres's parser accepts as it is:
+
+     SELECT order__id, order__total FROM orders WHERE order__shop_id = param('order/shop-id')
+
+   A param is param('name'), the params map's key the name as a keyword
+   ({:order/shop-id 7}); a param missing from the map, or a key the query
+   has no param for, is refused. A column entity__field comes back as
    :entity/field, with real types (UUID, BigDecimal, java.time). Every
    function that runs a query takes a pool, or the transaction that
    run-in-transaction! hands its function.
@@ -213,15 +219,16 @@
   (sql/stop-pool! pool))
 
 (defn make-query-from-sql-file
-  "A query from a .sql file on the classpath, read now: a missing file fails
-   when the namespace that defs the query loads."
+  "A query from a .sql file on the classpath, read now: a missing file, or a
+   param written other than param('name'), fails when the namespace that
+   defs the query loads."
   [path]
   (sql/make-query-from-sql-file path))
 
 (defn make-query-from-sql-text
   "A query from SQL text made by code, not read from a file (a table's
-   statements, made from its map). The name stands where a file's path
-   would, in errors."
+   statements, made from its map), its params param('name') as in a file.
+   The name stands where a file's path would, in errors."
   [query-name sql-text]
   (sql/make-query-from-sql-text query-name sql-text))
 

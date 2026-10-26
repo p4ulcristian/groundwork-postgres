@@ -11,4 +11,4 @@ JOIN pg_depend d     ON d.classid = 'pg_rewrite'::regclass AND d.objid = r.oid A
 JOIN pg_class t      ON t.oid = d.refobjid AND t.oid <> v.oid
 JOIN pg_namespace tn ON tn.oid = t.relnamespace
 LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid AND d.refobjsubid > 0
-WHERE vn.nspname = ANY (string_to_array(:folders, ','))
+WHERE vn.nspname = ANY (string_to_array(param('folders'), ','))

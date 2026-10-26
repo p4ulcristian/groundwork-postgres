@@ -14,7 +14,7 @@
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
 
 (def ^:private find-things-named
-  (database/make-query-from-sql-text "things named" "SELECT thing__id FROM things WHERE thing__name = :thing/name"))
+  (database/make-query-from-sql-text "things named" "SELECT thing__id FROM things WHERE thing__name = param('thing/name')"))
 (def ^:private find-named-things
   (database/make-query-from-sql-text "a view" "SELECT thing__id FROM named_things"))
 (def ^:private count-things
@@ -22,7 +22,7 @@
 (def ^:private count-things-saying-so
   (database/make-query-from-sql-text "a function, named" "-- reads: things\nSELECT count_things() AS n"))
 (def ^:private find-untyped
-  (database/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
+  (database/make-query-from-sql-text "a param Postgres can't type" "SELECT param('x') IS NULL AS b"))
 
 (deftest a-key-from-a-table-name
   (is (= :orders (database/turn-table-name-into-table-key "public" "orders")))

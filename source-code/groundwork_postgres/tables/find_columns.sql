@@ -8,5 +8,5 @@ FROM pg_attribute a
 JOIN pg_class c     ON c.oid = a.attrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-WHERE n.nspname = ANY (string_to_array(:folders, ',')) AND NOT (n.nspname = 'groundwork_postgres' AND c.relname = 'changes_done') AND c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+WHERE n.nspname = ANY (string_to_array(param('folders'), ',')) AND NOT (n.nspname = 'groundwork_postgres' AND c.relname = 'changes_done') AND c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
 ORDER BY c.relname, a.attnum

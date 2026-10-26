@@ -29,7 +29,7 @@
   (postgres/make-query-from-sql-text "the backend" "SELECT pg_backend_pid() AS pid"))
 
 (def ^:private end-backend
-  (postgres/make-query-from-sql-text "end the backend" "SELECT pg_terminate_backend(:pid) AS ended"))
+  (postgres/make-query-from-sql-text "end the backend" "SELECT pg_terminate_backend(param('pid')) AS ended"))
 
 (deftest each-pool-hears-its-own-lines
   (if-not test-settings/port

@@ -3,4 +3,4 @@ SELECT CASE WHEN n.nspname = 'public' THEN c.relname::text ELSE n.nspname || '.'
        c.relrowsecurity AS row_security,
        c.relforcerowsecurity AS forced_row_security
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = ANY (string_to_array(:folders, ',')) AND c.relkind IN ('r', 'p')
+WHERE n.nspname = ANY (string_to_array(param('folders'), ',')) AND c.relkind IN ('r', 'p')

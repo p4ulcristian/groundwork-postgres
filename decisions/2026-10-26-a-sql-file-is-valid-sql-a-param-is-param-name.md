@@ -1,6 +1,6 @@
 # A .sql file is valid SQL: columns by their real names, a param is param('name')
 
-> The user's decision, 2026-10-26, planning Iron Rainbow's database step (option C of five). Changes [A query is made by a function from its .sql file](2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md) in part: a param is no longer `:name`. Decided, not built yet.
+> The user's decision, 2026-10-26, planning Iron Rainbow's database step (option C of five). Changes [A query is made by a function from its .sql file](2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md) in part: a param is no longer `:name`. Built 2026-10-26, groundwork-postgres v0.4.10.
 
 **Decision:** every query file is SQL Postgres's parser accepts as it is.
 

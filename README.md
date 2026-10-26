@@ -1,8 +1,9 @@
 # groundwork-postgres
 
 Postgres from Clojure, in two halves. **Queries:** every query is a `.sql`
-file; a param is `:name`, a column `entity__field` comes back as
-`:entity/field`, with real types (UUID, BigDecimal, java.time).
+file of SQL Postgres's parser accepts as it is: a param is `param('name')`, a
+column `entity__field` comes back as `:entity/field`, with real types (UUID,
+BigDecimal, java.time) ([why](decisions/2026-10-26-a-sql-file-is-valid-sql-a-param-is-param-name.md)).
 **Tables:** declared as Clojure maps; groundwork-postgres compares them with Postgres and
 plans what differs, in two parts (instant, before the app starts; slow, after
 it, in the background). A difference that could lose data stops with a
@@ -121,11 +122,23 @@ and [groundwork-settings](https://github.com/p4ulcristian/groundwork-settings) (
                   :log          log})                                                 ; the app's: each planned statement
 
 ;; app/orders/find_orders_of_shop.sql:
-;;   SELECT order__id, order__total FROM orders WHERE order__shop_id = :order/shop-id
+;;   SELECT order__id, order__total FROM orders WHERE order__shop_id = param('order/shop-id')
 (def find-orders-of-shop (postgres/make-query-from-sql-file "app/orders/find_orders_of_shop.sql"))
 (postgres/find-rows pool find-orders-of-shop {:order/shop-id shop-id})
 ;=> [#:order{:id #uuid "1d000000-…" :total 120.50M}]
 ```
+
+A param is `param('name')`, written so: in lowercase, the `(` right after it,
+the name plain (`'limit'`, a control of the query) or namespaced
+(`'order/shop-id'`, a field of the data); the params map's keys are the names
+as keywords, `{:limit 10 :order/shop-id …}`. Each becomes a JDBC `?`, its
+value bound as PgJDBC binds it; a cast goes where the query needs one
+(`CAST(param('job/slots') AS jsonb)`). Not inside string literals, quoted
+identifiers, comments or dollar-quoted bodies. A params map missing a param
+of the query, or with a key the query has no param for, is refused
+(`:groundwork-postgres/missing-param`, `:groundwork-postgres/unknown-param`);
+a `:name` param, `PARAM('limit')`, `param ('limit')` or positional `$1` throws
+`:groundwork-postgres/syntax`.
 
 An index is a map with every key written out
 ([why](decisions/2026-10-23-an-index-is-a-map-and-unique-columns-are-uniques.md)):
