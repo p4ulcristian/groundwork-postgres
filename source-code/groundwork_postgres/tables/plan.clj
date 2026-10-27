@@ -19,6 +19,7 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [groundwork-postgres.tables.names :as names]
+   [groundwork-postgres.tables.quotes :as quotes]
    [groundwork-postgres.queries.postgres :as sql]))
 
 (defn- statement [sql-text why] {:sql sql-text :why why})
@@ -96,9 +97,6 @@
         :when (not= from-table table-name)]
     from-table))
 
-(defn- quote-text [text]
-  (str "'" (str/replace text "'" "''") "'"))
-
 (defn- change-column-type
   "A column's type changed to its map's, on paper, and in the slow part
    (it may rewrite the table): ALTER COLUMN … TYPE, then the change marked
@@ -123,7 +121,7 @@
                 (add-slow (str "ALTER TABLE " table-name " ALTER COLUMN " column-name " TYPE " to
                                " USING " column-name "::" to)
                           (str "change " id ": " where " from " from " to " to))
-                (add-slow (str "INSERT INTO groundwork_postgres.changes_done (change_done__id) VALUES (" (quote-text id) ")"
+                (add-slow (str "INSERT INTO groundwork_postgres.changes_done (change_done__id) VALUES (" (quotes/quote-text id) ")"
                                " ON CONFLICT (change_done__id) DO NOTHING")
                           (str "change " id " done, after its type change"))
                 (update :marked-in-slow-part (fnil conj #{}) id)
@@ -625,7 +623,7 @@
 (defn- quote-name
   "A folder.name, or a name, each part in double quotes."
   [qualified]
-  (str/join "." (map #(str "\"" (str/replace % "\"" "\"\"") "\"") (str/split qualified #"\."))))
+  (str/join "." (map quotes/quote-name (str/split qualified #"\."))))
 
 (defn- find-views-to-drop
   "The views Postgres has that go before the changes and tables: in no

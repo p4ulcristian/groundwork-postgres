@@ -26,3 +26,4 @@ The first three were made while cellar was a library inside Groundwork, a Clojur
 - [A column changes type by a change the plan understands](2026-10-23-a-column-changes-type-by-a-change-the-plan-understands.md)
 - [A transaction keeps work to run after its commit; work that must happen is a job](2026-10-23-a-transaction-keeps-work-to-run-after-its-commit.md)
 - [A .sql file is valid SQL: columns by their real names, a param is param('name')](2026-10-26-a-sql-file-is-valid-sql-a-param-is-param-name.md)
+- [Text and names in the SQL groundwork-postgres makes are quoted by PgJDBC](2026-10-27-text-and-names-in-made-sql-are-quoted-by-pgjdbc.md) (v0.5.0)

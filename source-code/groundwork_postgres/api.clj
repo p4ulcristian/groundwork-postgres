@@ -164,6 +164,7 @@
    [groundwork-postgres.tables.names :as names]
    [groundwork-postgres.tables.plan :as plan]
    [groundwork-postgres.tables.probe :as probe]
+   [groundwork-postgres.tables.quotes :as quotes]
    [groundwork-postgres.tables.types :as types]))
 
 ;; -----------------------------------------------------------------------------
@@ -530,6 +531,23 @@
   "A table key's Postgres name: :orders -> \"orders\", :billing/invoices -> \"billing.invoices\"."
   [k]
   (names/turn-table-key-into-table-name k))
+
+(defn quote-text
+  "Text as a SQL text literal, for SQL a library makes (a gate's condition,
+   a function's body): \"it's\" -> \"'it''s'\", by PgJDBC's
+   Utils/escapeLiteral. Quoted for standard_conforming_strings on,
+   Postgres's default: a backslash stays one. Text with a zero byte, which
+   Postgres can't hold, throws :groundwork-postgres/not-quotable."
+  [text]
+  (quotes/quote-text text))
+
+(defn quote-name
+  "One name in double quotes, for SQL a library makes: may orders/edit
+   is \"may orders/edit\", a double quote in it doubled, by PgJDBC's
+   Utils/escapeIdentifier. A name with a zero byte throws
+   :groundwork-postgres/not-quotable."
+  [name-text]
+  (quotes/quote-name name-text))
 
 (defn grant-tables-to-role!
   "Lets the app's own database role use the tables of these maps: their

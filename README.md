@@ -37,6 +37,7 @@ and [groundwork-settings](https://github.com/p4ulcristian/groundwork-settings) (
 | `turn-table-into-row-shape` | a table's rows as a malli shape |
 | `turn-column-type-into-postgres-type` | a column's type as Postgres's: `[:string {:max 10}]` → `character varying(10)` |
 | `turn-key-into-column-name` `turn-table-key-into-table-name` `turn-table-name-into-table-key` | names: `:order/shop-id` ↔ `order__shop_id`, `:billing/invoices` ↔ `billing.invoices` |
+| `quote-text` `quote-name` | text as a SQL literal (`it's` → `'it''s'`) and a name in double quotes, by PgJDBC's own `Utils`, for SQL a library makes; quoted for `standard_conforming_strings` on, Postgres's default, which an app must not turn off; a zero byte throws `:groundwork-postgres/not-quotable` ([why](decisions/2026-10-27-text-and-names-in-made-sql-are-quoted-by-pgjdbc.md)) |
 | `run-and-list-tables-read` | runs a function and returns what it returned with the tables its queries read, as Postgres's planner says; `{:log log}` first |
 | `start-listening!` `stop-listening!` `is-listening?` | `LISTEN` on a channel, notifications in batches, a reconnect said and counted; its batch window, waits and reconnect delay written out; whether its connection is listening now |
 

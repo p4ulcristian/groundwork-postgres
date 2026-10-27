@@ -26,6 +26,7 @@
    [groundwork-postgres.queries.params :as params]
    [groundwork-postgres.tables.gates :as gates]
    [groundwork-postgres.tables.names :as names]
+   [groundwork-postgres.tables.quotes :as quotes]
    [groundwork-postgres.tables.triggers :as triggers]
    [groundwork-postgres.tables.types :as types]))
 
@@ -210,7 +211,7 @@
                                  :when values
                                  :let [column-name (names/turn-key-into-column-name k)]]
                              [(names/make-enum-check-name table-name column-name)
-                              {:sql (str column-name " IN (" (str/join ", " (map types/quote-text values)) ")")}])
+                              {:sql (str column-name " IN (" (str/join ", " (map quotes/quote-text values)) ")")}])
                            (for [condition checks]
                              [(names/make-check-name table-name condition) {:sql condition}])))
       :gated?       (some? gates)

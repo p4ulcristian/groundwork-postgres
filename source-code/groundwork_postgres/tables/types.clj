@@ -1,7 +1,9 @@
 (ns groundwork-postgres.tables.types
   "A column's type in groundwork-shaped-json's words as Postgres's type, and a default as
    SQL. How Postgres prints a default back is asked of it
-   (groundwork-postgres.tables.probe), not foretold.")
+   (groundwork-postgres.tables.probe), not foretold."
+  (:require
+   [groundwork-postgres.tables.quotes :as quotes]))
 
 (def ^:private postgres-types
   ;; as format_type names them, which is also valid in CREATE TABLE
@@ -95,11 +97,6 @@
         (get postgres-types word)
         (throw-unknown-type type "not one of groundwork-postgres's types")))))
 
-(defn quote-text
-  "'it''s' : a SQL text literal."
-  [s]
-  (str "'" (.replace ^String (str s) "'" "''") "'"))
-
 (defn turn-default-into-sql
   "A column's :default as SQL, for a column of this Postgres type:
    :random-uuid, :time-ordered-uuid, :now, :today, a number, true/false,
@@ -115,7 +112,7 @@
       (= :today default)             "CURRENT_DATE"
       (boolean? default)             (str default)
       (number? default)              (if (neg? default) (str "(" default ")") (str default))
-      (string? default)              (quote-text default)
+      (string? default)              (quotes/quote-text default)
       (and (= [] default) json?)     "'[]'"
       (and (= [] default) array?)    "'{}'"
       (and (= {} default) json?)     "'{}'"
