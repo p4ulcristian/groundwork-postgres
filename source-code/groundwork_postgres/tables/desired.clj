@@ -66,19 +66,42 @@
       :else target)))
 
 (defn- check-set-null
-  "A reference that sets its columns to null on a delete or update names
-   only :optional? columns; throws otherwise."
-  [table-name table-map column-keys reference]
-  (when (some #{:set-null} [(:on-delete reference) (:on-update reference)])
-    (let [optional? (into {} (for [[k _ options] (:columns table-map)] [k (boolean (:optional? options))]))]
-      (when-let [required (seq (remove optional? column-keys))]
-        (throw-bad-reference (str table-name "'s reference " (pr-str reference) " sets " (pr-str (vec required))
-                                  " to null, which isn't {:optional? true}")
-                             reference)))))
+  "A reference that sets columns to null on a delete or update names only
+   :optional? columns: all of its own on :set-null, those it lists on
+   {:set-null [key …]}, which must be some of its :columns, each once, not
+   every one. Throws otherwise."
+  [table-name table-map column-keys {:keys [on-delete on-update] :as reference}]
+  (let [listed      (when (map? on-delete) (:set-null on-delete))
+        set-to-null (distinct (concat (when (some #{:set-null} [on-delete on-update]) column-keys) listed))
+        optional?   (into {} (for [[k _ options] (:columns table-map)] [k (boolean (:optional? options))]))]
+    (when listed
+      (when-let [foreign (seq (remove (set column-keys) listed))]
+        (throw-bad-reference (str table-name "'s reference " (pr-str reference) " sets " (pr-str (vec foreign))
+                                  " to null on delete, which isn't among its :columns " (pr-str (vec column-keys)))
+                             reference))
+      (when (not= (count listed) (count (distinct listed)))
+        (throw-bad-reference (str table-name "'s reference " (pr-str reference) " names a column twice in :set-null")
+                             reference))
+      (when (= (set listed) (set column-keys))
+        (throw-bad-reference (str table-name "'s reference " (pr-str reference) " sets every one of its :columns to null"
+                                  " on delete: say :on-delete :set-null")
+                             reference)))
+    (when-let [required (seq (remove optional? set-to-null))]
+      (throw-bad-reference (str table-name "'s reference " (pr-str reference) " sets " (pr-str (vec required))
+                                " to null, which isn't {:optional? true}")
+                           reference))))
 
-(defn- make-foreign-key [foreign-table column-names foreign-column-names {:keys [on-delete on-update checked-at]}]
-  {:columns column-names :foreign-table foreign-table :foreign-columns foreign-column-names
-   :on-delete on-delete :on-update on-update :checked-at checked-at :match :simple})
+(defn- turn-delete-action-into-desired
+  "A reference's :on-delete as the catalog reads it: a keyword, or
+   {:set-null [column-name …]} in the order of the reference's columns."
+  [column-keys on-delete]
+  (if (map? on-delete)
+    {:set-null (mapv names/turn-key-into-column-name (filter (set (:set-null on-delete)) column-keys))}
+    on-delete))
+
+(defn- make-foreign-key [foreign-table column-keys foreign-column-names {:keys [on-delete on-update checked-at]}]
+  {:columns (mapv names/turn-key-into-column-name column-keys) :foreign-table foreign-table :foreign-columns foreign-column-names
+   :on-delete (turn-delete-action-into-desired column-keys on-delete) :on-update on-update :checked-at checked-at :match :simple})
 
 (defn- turn-references-into-foreign-keys
   "{name {:columns :foreign-table :foreign-columns :on-delete :on-update
@@ -97,23 +120,27 @@
                                                             reference))
                      _             (check-set-null table-name table-map [k] reference)]]
            [(names/make-foreign-key-name table-name [column-name])
-            (make-foreign-key foreign-table [column-name] [(names/turn-key-into-column-name target)] reference)]))
+            (make-foreign-key foreign-table [k] [(names/turn-key-into-column-name target)] reference)]))
    (into {}
          (for [{:keys [to] :as reference} references
                :let [target       (find-target-of-reference table-maps table-name reference)
                      column-names (mapv names/turn-key-into-column-name (:columns reference))
                      _            (check-set-null table-name table-map (:columns reference) reference)]]
            [(names/make-foreign-key-name table-name column-names)
-            (make-foreign-key (names/turn-table-key-into-table-name (:table target)) column-names
+            (make-foreign-key (names/turn-table-key-into-table-name (:table target)) (:columns reference)
                               (mapv names/turn-key-into-column-name to) reference)]))))
 
 (defn- check-triggers
   "A trigger's :update-of names columns of its table, and only with
-   :update among its events; throws otherwise."
+   :update among its events; one on :truncate is :for-each :statement.
+   Throws otherwise."
   [table-name {:keys [columns triggers]}]
-  (doseq [{:keys [events update-of] :as trigger} triggers
-          :when update-of]
-    (when-not (contains? events :update)
+  (doseq [{:keys [events update-of for-each] :as trigger} triggers]
+    (when (and (contains? events :truncate) (not= :statement for-each))
+      (throw (ex-info (str table-name "'s trigger " (pr-str trigger) " is on :truncate, so :for-each :statement:"
+                           " Postgres calls no row trigger on TRUNCATE")
+                      {:type :groundwork-postgres/bad-trigger :trigger trigger})))
+    (when (and update-of (not (contains? events :update)))
       (throw (ex-info (str table-name "'s trigger " (pr-str trigger) " has :update-of without :update among its events")
                       {:type :groundwork-postgres/bad-trigger :trigger trigger})))
     (when-let [unknown (seq (remove (set (map first columns)) update-of))]

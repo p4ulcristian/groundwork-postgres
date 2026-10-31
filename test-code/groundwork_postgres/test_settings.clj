@@ -13,13 +13,20 @@
   "The test user's password, a secret as the app's settings hold one."
   (some->> (System/getenv "POSTGRES_TEST_PASSWORD") (settings/make-secret :groundwork-postgres/password)))
 
+(def database
+  "The test database: POSTGRES_TEST_DATABASE, or postgres when unset. The
+   tests empty its public folder, so on a Postgres others use too it is
+   one of the tests' own."
+  (or (System/getenv "POSTGRES_TEST_DATABASE") "postgres"))
+
 (defn make-pool-settings
-  "A test Postgres on localhost, the user from POSTGRES_TEST_USER, the
-   password from POSTGRES_TEST_PASSWORD, no TLS."
+  "A test Postgres on localhost, the database from POSTGRES_TEST_DATABASE,
+   the user from POSTGRES_TEST_USER, the password from
+   POSTGRES_TEST_PASSWORD, no TLS."
   [pool-size statement-timeout-ms]
   {:host                           "localhost"
    :port                           port
-   :database                       "postgres"
+   :database                       database
    :user                           (System/getenv "POSTGRES_TEST_USER")
    :password                       password
    :tls                            :off

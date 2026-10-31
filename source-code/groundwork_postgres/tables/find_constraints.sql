@@ -1,5 +1,6 @@
 -- Primary keys, foreign keys, unique keys and checks of the tables in the folders the maps name;
--- a check's condition as Postgres prints it.
+-- a check's condition as Postgres prints it; the columns a reference's ON DELETE SET NULL (…) or
+-- SET DEFAULT (…) names (confdelsetcols, Postgres 15's), in the order of its own columns, null for all.
 SELECT CASE WHEN n.nspname = 'public' THEN c.relname::text ELSE n.nspname || '.' || c.relname END AS table_name,
        con.conname::text          AS constraint_name,
        con.contype::text          AS constraint_type,
@@ -13,6 +14,9 @@ SELECT CASE WHEN n.nspname = 'public' THEN c.relname::text ELSE n.nspname || '.'
        (SELECT array_agg(a.attname::text ORDER BY k.ord)
         FROM unnest(con.conkey) WITH ORDINALITY k(attnum, ord)
         JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum) AS column_names,
+       (SELECT array_agg(a.attname::text ORDER BY array_position(con.conkey, a.attnum))
+        FROM unnest(con.confdelsetcols) k(attnum)
+        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum) AS delete_column_names,
        CASE WHEN fn.nspname = 'public' THEN fc.relname::text ELSE fn.nspname || '.' || fc.relname END AS foreign_table,
        (SELECT array_agg(a.attname::text ORDER BY k.ord)
         FROM unnest(con.confkey) WITH ORDINALITY k(attnum, ord)

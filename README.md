@@ -298,15 +298,29 @@ A table map's `:references` are references over several columns, `[]` for
 none (a one-column one is the column's `:references`):
 `{:columns [:job/order-id :job/shop-id] :to [:order/id :order/shop-id] :on-delete :refuse :on-update :cascade :checked-at :statement}`.
 `:to` names the other table's columns, its primary key among them, which
-get a unique key together.
+get a unique key together. Its `:on-delete` may also set only some of its
+columns to null, the others kept: `{:set-null [:batch/coating-id]}` on
+`{:columns [:batch/workspace-id :batch/coating-id] :to [:coating/workspace-id :coating/id] …}`
+is Postgres 15's `ON DELETE SET NULL (batch__coating_id)`, read back from
+its catalog (`confdelsetcols`), so groundwork-postgres needs Postgres 15 or
+newer; each listed column is one of `:columns`, `:optional?`, and not every
+one of them (that is `:set-null`), else `:groundwork-postgres/bad-reference`
+([why](decisions/2026-10-31-a-reference-may-set-only-some-of-its-columns-to-null-on-delete.md)).
 Its `:triggers`, `[]` for none, are triggers a library on top (or the app)
 declares, calling a function it makes:
 `{:function "groundwork_access.fill_1a2b3c4d" :arguments [] :timing :before :events #{:insert :update} :update-of [:job/order-id] :for-each :row :when nil}`,
-`:when` nil to call it always, or a condition
+`:events` a set of `:insert` `:update` `:delete` `:truncate`, `:when` nil to
+call it always, or a condition
 (`"OLD.package__workspace_id IS DISTINCT FROM NEW.package__workspace_id"`;
 [why](decisions/2026-10-23-a-trigger-says-when-it-is-called.md));
 like the change triggers, one no map names is dropped
 ([why](decisions/2026-10-23-a-table-map-says-references-over-several-columns-and-a-librarys-triggers.md)).
+A trigger on `:truncate` is `:for-each :statement` (Postgres calls no row
+trigger on TRUNCATE; else `:groundwork-postgres/bad-trigger`): a guard
+`{:function "catalog.refuse_truncate" :arguments [] :timing :before :events #{:truncate} :update-of nil :for-each :statement :when nil}`,
+whose function raises, keeps a table from being emptied at once, by
+`TRUNCATE` or a cascade from another
+([why](decisions/2026-10-31-a-declared-trigger-may-be-called-on-truncate.md)).
 
 ## Tests
 
@@ -320,6 +334,10 @@ pg_ctl -D /tmp/postgres-pg -o "-p 5499 -k /tmp -c listen_addresses=localhost" -l
 POSTGRES_TEST_PORT=5499 POSTGRES_TEST_USER=$USER POSTGRES_TEST_PASSWORD=groundwork-postgres-test-password clojure -X:test
 pg_ctl -D /tmp/postgres-pg stop
 ```
+
+The tests empty the database's public folder: on a Postgres others use too,
+give them a database of their own, `POSTGRES_TEST_DATABASE=…` (`postgres`
+when unset).
 
 Why it is the way it is: [`decisions/`](decisions/README.md).
 

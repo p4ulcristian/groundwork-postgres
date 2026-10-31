@@ -14,7 +14,9 @@
    the app), each its own: a function, before or after which events, for
    each row or statement, when a condition holds or always
    (turn-declared-triggers-into-triggers); groundwork-access's
-   fill of a record's carried columns from its parent is one."
+   fill of a record's carried columns from its parent is one, and a
+   guard BEFORE TRUNCATE that raises, so the table can't be emptied at
+   once, another."
   (:require
    [clojure.string :as str]
    [groundwork-postgres.tables.names :as names]
@@ -36,9 +38,9 @@
           [trigger-name (str "CREATE TRIGGER " trigger-name " " body)])))
 
 (defn- write-events
-  "INSERT OR UPDATE OF a, b OR DELETE, in that order."
+  "INSERT OR UPDATE OF a, b OR DELETE OR TRUNCATE, in that order."
   [events update-of]
-  (str/join " OR " (for [event [:insert :update :delete] :when (contains? events event)]
+  (str/join " OR " (for [event [:insert :update :delete :truncate] :when (contains? events event)]
                      (if (and (= :update event) (seq update-of))
                        (str "UPDATE OF " (str/join ", " (map names/turn-key-into-column-name update-of)))
                        (str/upper-case (name event))))))

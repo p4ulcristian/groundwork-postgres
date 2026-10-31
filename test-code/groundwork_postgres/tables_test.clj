@@ -4,8 +4,7 @@
    were skipped otherwise. Each starts from an empty database."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [groundwork-postgres.api :as schema]
-   [groundwork-postgres.api :as sql]
+   [groundwork-postgres.api :as postgres]
    [groundwork-postgres.test-settings :as test-settings]))
 
 (def ^:private port test-settings/port)
@@ -46,22 +45,22 @@
   (assoc-in orders-with-promised [:columns 4] [:order/customer-note :string {:optional? true}]))
 
 (defn- run-sql! [pool text]
-  (sql/run-statement! pool (sql/make-query-from-sql-text "test" text) {}))
+  (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
 
 (defn- with-empty-database [f]
   (let [pool (test-settings/start-pool! 4 10000)]
     (try
       (run-sql! pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE")
       (f pool)
-      (finally (sql/stop-pool! pool)))))
+      (finally (postgres/stop-pool! pool)))))
 
 (defn- migrate-and-wait! [pool tables changes]
-  (let [plan (schema/migrate! pool (test-settings/declare-tables tables) changes test-settings/migrate-options)]
+  (let [plan (postgres/migrate! pool (test-settings/declare-tables tables) changes test-settings/migrate-options)]
     @(:slow-part plan)
     plan))
 
 (defn- plan-of [pool tables changes]
-  (select-keys (schema/make-plan-from-tables pool (test-settings/declare-tables tables) changes) [:instant :slow :stops :changes-to-mark]))
+  (select-keys (postgres/make-plan-from-tables pool (test-settings/declare-tables tables) changes) [:instant :slow :stops :changes-to-mark]))
 
 (def ^:private nothing-to-do {:instant [] :slow [] :stops [] :changes-to-mark []})
 
@@ -102,17 +101,17 @@
       (fn [pool]
         (run-sql! pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_postgres_app') THEN CREATE ROLE groundwork_postgres_app; END IF; END $$")
         (migrate-and-wait! pool [shops orders] [{:id "c1" :rename-column [:orders :order/old :order/note]}])
-        (schema/grant-tables-to-role! pool [shops orders] "groundwork_postgres_app")
-        (is (schema/run-in-transaction! pool {:read-only? false :log test-settings/log}
+        (postgres/grant-tables-to-role! pool [shops orders] "groundwork_postgres_app")
+        (is (postgres/run-in-transaction! pool {:read-only? false :log test-settings/log}
               (fn [transaction]
                 (run-sql! transaction "SET LOCAL ROLE groundwork_postgres_app")
-                (schema/does-database-match-tables? transaction (test-settings/declare-tables [shops orders]) [{:id "c1" :rename-column [:orders :order/old :order/note]}])))
+                (postgres/does-database-match-tables? transaction (test-settings/declare-tables [shops orders]) [{:id "c1" :rename-column [:orders :order/old :order/note]}])))
             "as the app's role, which owns nothing: the changes done are read, the database matches")))))
 
 (deftest the-row-shape-comes-from-the-map
-  (is (= [:map [:shop/id :uuid] [:shop/name :string]] (schema/turn-table-into-row-shape shops)))
+  (is (= [:map [:shop/id :uuid] [:shop/name :string]] (postgres/turn-table-into-row-shape shops)))
   (is (= [:order/note {:optional true} [:maybe :string]]
-         (nth (schema/turn-table-into-row-shape orders) 5))))
+         (nth (postgres/turn-table-into-row-shape orders) 5))))
 
 (deftest migrating-against-postgres
   (if-not port
@@ -122,7 +121,7 @@
         (testing "a fresh database gets the tables, and then nothing differs"
           (migrate-and-wait! pool [shops orders] [{:id "c1" :rename-column [:orders :order/old :order/note]}])
           (is (= nothing-to-do (plan-of pool [shops orders] [{:id "c1" :rename-column [:orders :order/old :order/note]}])))
-          (is (schema/does-database-match-tables? pool (test-settings/declare-tables [shops orders]) [])))
+          (is (postgres/does-database-match-tables? pool (test-settings/declare-tables [shops orders]) [])))
 
         (run-sql! pool "INSERT INTO shops (shop__name) VALUES ('Hotcoats')")
         (run-sql! pool "INSERT INTO orders (order__shop_id) SELECT shop__id FROM shops")

@@ -1,5 +1,7 @@
 # A reference writes out what it does on delete, on update, and when it is checked
 
+> **Added to** by [A reference over several columns may set only some of its columns to null on delete](2026-10-31-a-reference-may-set-only-some-of-its-columns-to-null-on-delete.md) (2026-10-31, on main): a several-column reference's `:on-delete` may be `{:set-null [key …]}`, Postgres 15's `ON DELETE SET NULL (column, …)`.
+
 > The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md section 1: ON DELETE on 223 keys, ON UPDATE CASCADE on 75, 3 deferrable). Built on tidy-up, not released.
 
 **What was wrong:** a column's `:references :package/id` meant, unsaid, "refuse the delete, refuse the update, check at the statement". cellar read only a key's update action, so an existing ON DELETE CASCADE key counted as the same as a map that refuses deletes: the map and Postgres disagreed and nothing said so.

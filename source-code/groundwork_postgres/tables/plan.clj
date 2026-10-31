@@ -41,14 +41,14 @@
         renames    (concat
                     (for [[n {:keys [columns]}] (:foreign-keys table)
                           :when (= n (names/make-foreign-key-name old-table (map old-column columns)))]
-                      [:foreign-keys n (names/make-foreign-key-name new-table columns) :constraint])
+                      [:foreign-keys n (names/make-foreign-key-name new-table columns)])
                     (for [[n {:keys [columns]}] (:uniques table)
                           :when (= n (names/make-unique-name old-table (map old-column columns)))]
-                      [:uniques n (names/make-unique-name new-table columns) :constraint])
+                      [:uniques n (names/make-unique-name new-table columns)])
                     (for [[n {:keys [column]}] (:not-null-checks table)
                           :when (= n (names/make-not-null-check-name old-table (old-column column)))]
-                      [:not-null-checks n (names/make-not-null-check-name new-table column) :constraint]))]
-    (reduce (fn [state [kind old-name new-name what]]
+                      [:not-null-checks n (names/make-not-null-check-name new-table column)]))]
+    (reduce (fn [state [kind old-name new-name]]
               (if (= old-name new-name)
                 state
                 (-> state
@@ -78,6 +78,12 @@
                  (re-pattern (str "'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|\\b" (java.util.regex.Pattern/quote from) "\\b"))
                  #(if (= % from) to %))))
 
+(defn- rename-columns-of-reference
+  "A reference's columns renamed, those its ON DELETE SET NULL (…) names too."
+  [fk rename]
+  (cond-> (update fk :columns (partial mapv rename))
+    (map? (:on-delete fk)) (update :on-delete update-vals (partial mapv rename))))
+
 (defn- rename-column-in-table [table from to]
   (let [rename #(if (= % from) to %)]
     (-> table
@@ -85,7 +91,7 @@
         (update :indexes update-vals #(update % :body rename-column-in-sql from to))
         (update :columns (partial mapv #(update % :name rename)))
         (update :primary-key (partial mapv rename))
-        (update :foreign-keys update-vals #(update % :columns (partial mapv rename)))
+        (update :foreign-keys update-vals #(rename-columns-of-reference % rename))
         (update :uniques update-vals #(update % :columns (partial mapv rename)))
         (update :not-null-checks update-vals #(update % :column rename))
         (update :indexes update-vals #(update % :columns (partial mapv rename))))))
@@ -305,10 +311,17 @@
 (def ^:private checked-at-sql
   {:statement "NOT DEFERRABLE" :commit "DEFERRABLE INITIALLY DEFERRED"})
 
+(defn- write-action
+  "An action as SQL: SET NULL, or SET NULL (a, b) for {:set-null [\"a\" \"b\"]}."
+  [action]
+  (if (map? action)
+    (let [[kind columns] (first action)] (str (action-sql kind) " (" (str/join ", " columns) ")"))
+    (action-sql action)))
+
 (defn- write-foreign-key [table-name fk-name {:keys [columns foreign-table foreign-columns on-delete on-update checked-at]}]
   (str "ALTER TABLE " table-name " ADD CONSTRAINT " fk-name
        " FOREIGN KEY (" (str/join ", " columns) ") REFERENCES " foreign-table " (" (str/join ", " foreign-columns) ")"
-       " ON DELETE " (action-sql on-delete) " ON UPDATE " (action-sql on-update)
+       " ON DELETE " (write-action on-delete) " ON UPDATE " (write-action on-update)
        (when (= :commit checked-at) (str " " (checked-at-sql checked-at)))))
 
 (defn- write-table-parts [{:keys [columns primary-key uniques]}]

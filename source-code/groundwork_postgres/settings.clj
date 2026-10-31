@@ -215,9 +215,15 @@
   [:enum :cascade :set-null :refuse :restrict])
 
 (def ^:private reference-keys
-  [[:on-delete reference-action]
-   [:on-update reference-action]
+  [[:on-update reference-action]
    [:checked-at [:enum :statement :commit]]])
+
+(def ^:private delete-action-of-several-columns
+  ;; a reference over several columns may also set only some of them to
+  ;; null on a delete, {:set-null [:batch/coating-id]}: Postgres 15's
+  ;; ON DELETE SET NULL (batch__coating_id)
+  [:or reference-action
+   [:map {:closed true} [:set-null [:sequential {:min 1} :qualified-keyword]]]])
 
 (def reference-of-column-shape
   "A column's reference, every key written out: :to, another table's
@@ -229,17 +235,21 @@
    (refused at once, even when checked at commit); :checked-at, :statement
    (after each statement) or :commit (DEFERRABLE INITIALLY DEFERRED: when
    the transaction commits)."
-  (into [:map {:closed true} [:to :qualified-keyword]] reference-keys))
+  (into [:map {:closed true} [:to :qualified-keyword] [:on-delete reference-action]] reference-keys))
 
 (def reference-shape
   "A reference over several columns: :columns, the row's, in order;
    :to, the other table's, in the same order, its primary key among them;
    :on-delete, :on-update and :checked-at as a column's reference says
    them (reference-of-column-shape); :set-null only when every one of
-   :columns is :optional?."
+   :columns is :optional?. :on-delete may also be {:set-null [key …]}:
+   only those of :columns set to null when the row it points at is
+   deleted, the others kept (Postgres 15's ON DELETE SET NULL (column,
+   …)); each :optional?, not every one of :columns (that is :set-null)."
   (into [:map {:closed true}
          [:columns [:sequential {:min 2} :qualified-keyword]]
-         [:to [:sequential {:min 2} :qualified-keyword]]]
+         [:to [:sequential {:min 2} :qualified-keyword]]
+         [:on-delete delete-action-of-several-columns]]
         reference-keys))
 
 (def column-options-shape
@@ -272,8 +282,10 @@
   "A trigger a library (or the app) declares on its table: Postgres calls
    :function, made by whoever declares it, with :arguments (text, [] for
    none), :timing :before or :after the :events (a set of :insert :update
-   :delete), :for-each :row or :statement. :update-of, with :update among
-   the events: nil for a change of any column, or the columns whose change
+   :delete :truncate; :truncate only :for-each :statement, as Postgres
+   calls no row trigger on TRUNCATE), :for-each :row or :statement.
+   :update-of, with :update among the events: nil for a change of any
+   column, or the columns whose change
    calls it. :when, nil to call it for every row (or statement), or a SQL
    condition, on OLD and NEW for a row trigger, that must hold for it to
    be called."
@@ -281,7 +293,7 @@
    [:function :string]
    [:arguments [:sequential :string]]
    [:timing [:enum :before :after]]
-   [:events [:set {:min 1} [:enum :insert :update :delete]]]
+   [:events [:set {:min 1} [:enum :insert :update :delete :truncate]]]
    [:update-of [:maybe [:sequential {:min 1} :qualified-keyword]]]
    [:for-each [:enum :row :statement]]
    [:when [:maybe :string]]])

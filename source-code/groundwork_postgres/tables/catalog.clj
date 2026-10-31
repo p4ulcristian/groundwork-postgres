@@ -5,7 +5,7 @@
      {\"orders\" {:columns      [{:name \"order__id\" :type \"uuid\" :not-null? true :default \"gen_random_uuid()\"} …]
                  :primary-key  [\"order__id\"]
                  :foreign-keys {\"orders_order__shop_id_fkey\" {:columns [\"order__shop_id\"] :foreign-table \"shops\"
-                                                              :foreign-columns [\"shop__id\"] :on-delete :refuse
+                                                              :foreign-columns [\"shop__id\"] :on-delete :refuse ; or {:set-null [\"…\"]}
                                                               :on-update :refuse :checked-at :statement
                                                               :match :simple :validated? true}}
                  :uniques      {\"orders_order__id_order__shop_id_key\" {:columns [\"order__id\" \"order__shop_id\"]}}
@@ -96,15 +96,27 @@
         deferred         :commit
         :else            :deferrable-immediate))
 
+(defn- find-delete-action
+  "What a reference does on delete: an action, or {:set-null [column …]}
+   when it sets only some of its columns to null (Postgres 15's ON DELETE
+   SET NULL (…), its confdelsetcols); a list of every column is the
+   same as none, :set-null."
+  [on-delete column-names delete-column-names]
+  (let [action (get reference-actions on-delete)]
+    (if (and (seq delete-column-names) (not= (set delete-column-names) (set column-names)))
+      {action (vec delete-column-names)}
+      action)))
+
 (defn- add-constraint [tables {:keys [table-name constraint-name constraint-type validated condition on-update on-delete
-                                      deferrable deferred match column-names foreign-table foreign-column-names]}]
+                                      deferrable deferred match column-names delete-column-names foreign-table
+                                      foreign-column-names]}]
   (case constraint-type
     "p" (assoc-in tables [table-name :primary-key] column-names)
     "f" (assoc-in tables [table-name :foreign-keys constraint-name]
                   {:columns         (vec column-names)
                    :foreign-table   foreign-table
                    :foreign-columns (vec foreign-column-names)
-                   :on-delete       (get reference-actions on-delete)
+                   :on-delete       (find-delete-action on-delete column-names delete-column-names)
                    :on-update       (get reference-actions on-update)
                    :checked-at      (find-checked-at deferrable deferred)
                    :match           (get reference-matches match)

@@ -58,9 +58,13 @@
 
 (defn- declare-with-fill
   "These tables, and the functions the tests' triggers call: the jobs'
-   fill (postgres/fill_job.sql) and a counter (postgres/count_moves.sql)."
+   fill (postgres/fill_job.sql), a counter (postgres/count_moves.sql) and
+   a guard that refuses a TRUNCATE (postgres/refuse_truncate.sql)."
   [tables]
-  {:tables tables :extensions [] :functions ["groundwork_postgres/fill_job.sql" "groundwork_postgres/count_moves.sql"] :views []})
+  {:tables     tables
+   :extensions []
+   :functions  ["groundwork_postgres/fill_job.sql" "groundwork_postgres/count_moves.sql" "groundwork_postgres/refuse_truncate.sql"]
+   :views      []})
 
 (defn- with-empty-database [f]
   (let [pool (test-settings/start-pool! 4 10000)]
@@ -329,3 +333,197 @@
           (is (= {:instant [] :slow [] :stops [] :changes-to-mark []}
                  (select-keys (postgres/make-plan-from-tables pool (declare-with-fill [invitations]) changes) [:instant :slow :stops :changes-to-mark])))
           (is (= [] (find-rows pool "SELECT relname FROM pg_class WHERE relname = 'roles'"))))))))
+
+;; -----------------------------------------------------------------------------
+;; A reference that sets only some of its columns to null on delete
+
+(defn- batches-of
+  "A batch belongs to a shop and may name one of its orders: a reference
+   over both, to the order's shop and id, that does on-delete."
+  [on-delete]
+  {:table      :batches
+   :columns    [[:batch/id       :uuid {:primary-key? true :default :random-uuid}]
+                [:batch/shop-id  :uuid]
+                [:batch/order-id :uuid {:optional? true}]]
+   :indexes    []
+   :uniques    []
+   :checks     []
+   :references [{:columns [:batch/shop-id :batch/order-id] :to [:order/shop-id :order/id]
+                 :on-delete on-delete :on-update :cascade :checked-at :statement}]
+   :triggers   []
+   :gates      nil
+   :on-change  nil})
+
+(def ^:private keeps-the-shop {:set-null [:batch/order-id]})
+
+(def ^:private batch-reference "batches_batch__shop_id_batch__order_id_fkey")
+
+(defn- refusal-of
+  "What make-plan-from-tables refuses these tables with, before it asks
+   Postgres anything: {:type :message}, or nil."
+  [tables]
+  (try (postgres/make-plan-from-tables nil (declare-with-fill tables) []) nil
+       (catch Exception e {:type (:type (ex-data e)) :message (ex-message e)})))
+
+(deftest a-reference-sets-to-null-only-its-own-optional-columns-it-lists
+  (let [refused (refusal-of [shops orders (batches-of {:set-null [:order/id]})])]
+    (is (= :groundwork-postgres/bad-reference (:type refused)))
+    (is (re-find #"sets \[:order/id\] to null on delete, which isn't among its :columns" (:message refused))))
+  (let [refused (refusal-of [shops orders (batches-of {:set-null [:batch/shop-id]})])]
+    (is (= :groundwork-postgres/bad-reference (:type refused)))
+    (is (re-find #"sets \[:batch/shop-id\] to null, which isn't \{:optional\? true\}" (:message refused))))
+  (let [refused (refusal-of [shops orders (batches-of {:set-null [:batch/order-id :batch/order-id]})])]
+    (is (= :groundwork-postgres/bad-reference (:type refused)))
+    (is (re-find #"names a column twice" (:message refused))))
+  (let [both-optional (assoc-in (batches-of {:set-null [:batch/order-id :batch/shop-id]}) [:columns 1 2] {:optional? true})
+        refused       (refusal-of [shops orders both-optional])]
+    (is (= :groundwork-postgres/bad-reference (:type refused)))
+    (is (re-find #"sets every one of its :columns to null on delete: say :on-delete :set-null" (:message refused))))
+  (is (= :groundwork-postgres/bad-tables (:type (refusal-of [shops orders (batches-of {:set-null []})])))
+      "at least one column")
+  (is (= :groundwork-postgres/bad-tables (:type (refusal-of [shops orders (batches-of {:set-null [:batch/order-id] :keep [:batch/shop-id]})])))
+      "closed: only :set-null")
+  (is (= :groundwork-postgres/bad-tables
+         (:type (refusal-of [shops (assoc-in orders [:columns 1 2 :references :on-delete] {:set-null [:order/shop-id]})])))
+      "a column's reference has one column: all of it is :set-null")
+  (is (= :groundwork-postgres/bad-tables
+         (:type (refusal-of [shops orders (assoc-in (batches-of :refuse) [:references 0 :on-update] {:set-null [:batch/order-id]})])))
+      "on update Postgres sets all or none")
+  (is (nil? (:type (refusal-of [shops orders (batches-of keeps-the-shop)])))
+      "taken: it goes on to ask Postgres (here no pool)"))
+
+(deftest a-reference-that-sets-some-columns-to-null-is-made-migrated-and-matched
+  (if-not port
+    (println "groundwork-postgres.references-test: skipped, POSTGRES_TEST_PORT is not set")
+    (with-empty-database
+      (fn [pool]
+        (testing "made on a fresh database: ON DELETE SET NULL (batch__order_id)"
+          (is (some #{(str "ALTER TABLE batches ADD CONSTRAINT " batch-reference " FOREIGN KEY (batch__shop_id, batch__order_id)"
+                           " REFERENCES orders (order__shop_id, order__id) ON DELETE SET NULL (batch__order_id) ON UPDATE CASCADE")}
+                    (map :sql (:instant (plan-of pool [shops orders (batches-of keeps-the-shop)])))))
+          (migrate-and-wait! pool [shops orders (batches-of keeps-the-shop)])
+          (is (= nothing-to-do (plan-of pool [shops orders (batches-of keeps-the-shop)])))
+          (is (true? (postgres/does-database-match-tables? pool (declare-with-fill [shops orders (batches-of keeps-the-shop)]) [])))
+          (is (= [{:confdelsetcols "{3}"}]
+                 (find-rows pool (str "SELECT confdelsetcols::text AS confdelsetcols FROM pg_constraint WHERE conname = '" batch-reference "'")))
+              "Postgres keeps the third column, batch__order_id"))
+        (let [shop  (:shop/id (first (find-rows pool "INSERT INTO shops DEFAULT VALUES RETURNING shop__id")))
+              order #(:order/id (first (find-rows pool (str "INSERT INTO orders (order__shop_id) VALUES ('" shop "') RETURNING order__id"))))]
+          (testing "a deleted order leaves its batches the shop"
+            (run-sql! pool (str "INSERT INTO batches (batch__shop_id, batch__order_id) VALUES ('" shop "', '" (order) "')"))
+            (run-sql! pool "DELETE FROM orders")
+            (is (= [{:batch/shop-id shop :batch/order-id nil}] (find-rows pool "SELECT batch__shop_id, batch__order_id FROM batches"))))
+          (testing "another action on delete: made again, NOT VALID, proven in the slow part"
+            (let [{:keys [instant slow]} (plan-of pool [shops orders (batches-of :refuse)])]
+              (is (= [(str "ALTER TABLE batches DROP CONSTRAINT " batch-reference)
+                      (str "ALTER TABLE batches ADD CONSTRAINT " batch-reference " FOREIGN KEY (batch__shop_id, batch__order_id)"
+                           " REFERENCES orders (order__shop_id, order__id) ON DELETE NO ACTION ON UPDATE CASCADE NOT VALID")]
+                     (map :sql instant)))
+              (is (= [(str "ALTER TABLE batches VALIDATE CONSTRAINT " batch-reference)] (map :sql slow))))
+            (migrate-and-wait! pool [shops orders (batches-of :refuse)])
+            (is (= nothing-to-do (plan-of pool [shops orders (batches-of :refuse)])))
+            (run-sql! pool (str "UPDATE batches SET batch__order_id = '" (order) "'"))
+            (is (thrown? Exception (run-sql! pool "DELETE FROM orders")) "refused now")
+            (let [{:keys [instant slow]} (plan-of pool [shops orders (batches-of keeps-the-shop)])]
+              (is (= [(str "ALTER TABLE batches DROP CONSTRAINT " batch-reference)
+                      (str "ALTER TABLE batches ADD CONSTRAINT " batch-reference " FOREIGN KEY (batch__shop_id, batch__order_id)"
+                           " REFERENCES orders (order__shop_id, order__id) ON DELETE SET NULL (batch__order_id) ON UPDATE CASCADE NOT VALID")]
+                     (map :sql instant)))
+              (is (= 1 (count slow))))
+            (migrate-and-wait! pool [shops orders (batches-of keeps-the-shop)])
+            (is (= nothing-to-do (plan-of pool [shops orders (batches-of keeps-the-shop)])))
+            (run-sql! pool "DELETE FROM orders")
+            (is (= [{:batch/shop-id shop :batch/order-id nil}] (find-rows pool "SELECT batch__shop_id, batch__order_id FROM batches")))))
+        (testing "made outside under another name, the same: adopted, the catalog only"
+          (run-sql! pool (str "ALTER TABLE batches DROP CONSTRAINT " batch-reference))
+          (run-sql! pool (str "ALTER TABLE batches ADD CONSTRAINT batches_order_fk FOREIGN KEY (batch__shop_id, batch__order_id)"
+                              " REFERENCES orders (order__shop_id, order__id) ON DELETE SET NULL (batch__order_id) ON UPDATE CASCADE"))
+          (is (= {:instant [{:sql (str "ALTER TABLE batches RENAME CONSTRAINT batches_order_fk TO " batch-reference)
+                             :why (str "adopt batches_order_fk as " batch-reference ": the same as its map's")}]
+                  :slow [] :stops [] :changes-to-mark []}
+                 (plan-of pool [shops orders (batches-of keeps-the-shop)])))
+          (migrate-and-wait! pool [shops orders (batches-of keeps-the-shop)]))
+        (testing "a renamed column: renamed in the list too, the key kept"
+          (let [renamed (-> (batches-of {:set-null [:batch/placed-order-id]})
+                            (assoc-in [:columns 2 0] :batch/placed-order-id)
+                            (assoc-in [:references 0 :columns] [:batch/shop-id :batch/placed-order-id]))
+                changes [{:id "r2" :rename-column [:batches :batch/order-id :batch/placed-order-id]}]
+                sqls    (map :sql (:instant (postgres/make-plan-from-tables pool (declare-with-fill [shops orders renamed]) changes)))]
+            (is (= ["ALTER TABLE batches RENAME COLUMN batch__order_id TO batch__placed_order_id"
+                    (str "ALTER TABLE batches RENAME CONSTRAINT " batch-reference " TO batches_batch__shop_id_batch__placed_order_id_fkey")]
+                   sqls))
+            @(:slow-part (postgres/migrate! pool (declare-with-fill [shops orders renamed]) changes test-settings/migrate-options))
+            (is (true? (postgres/does-database-match-tables? pool (declare-with-fill [shops orders renamed]) changes)))))
+        (testing "a list of every column Postgres has is :set-null"
+          (let [all-optional (-> (batches-of :set-null) (assoc-in [:columns 1 2] {:optional? true}))]
+            (run-sql! pool "DROP TABLE batches")
+            (migrate-and-wait! pool [shops orders all-optional])
+            (run-sql! pool (str "ALTER TABLE batches DROP CONSTRAINT " batch-reference))
+            (run-sql! pool (str "ALTER TABLE batches ADD CONSTRAINT " batch-reference " FOREIGN KEY (batch__shop_id, batch__order_id)"
+                                " REFERENCES orders (order__shop_id, order__id) ON DELETE SET NULL (batch__order_id, batch__shop_id) ON UPDATE CASCADE"))
+            (is (= nothing-to-do (plan-of pool [shops orders all-optional])))))))))
+
+;; -----------------------------------------------------------------------------
+;; Triggers on TRUNCATE
+
+(def ^:private truncate-guard
+  {:function "public.refuse_truncate" :arguments [] :timing :before :events #{:truncate} :update-of nil
+   :for-each :statement :when nil})
+
+(def ^:private guarded-orders (assoc orders :triggers [truncate-guard]))
+
+(deftest a-truncate-trigger-is-for-each-statement
+  (let [refused (refusal-of [shops (assoc orders :triggers [(assoc truncate-guard :for-each :row)])])]
+    (is (= :groundwork-postgres/bad-trigger (:type refused)))
+    (is (re-find #"is on :truncate, so :for-each :statement" (:message refused))))
+  (is (= :groundwork-postgres/bad-trigger
+         (:type (refusal-of [shops (assoc orders :triggers [(assoc truncate-guard :events #{:insert :truncate} :for-each :row)])])))
+      "with other events too")
+  (is (= :groundwork-postgres/bad-tables (:type (refusal-of [shops (assoc orders :triggers [(assoc truncate-guard :events #{:select})])])))
+      "an event Postgres has no trigger for")
+  (is (nil? (:type (refusal-of [shops guarded-orders])))
+      "taken: it goes on to ask Postgres (here no pool)"))
+
+(deftest a-table-refuses-truncate-by-a-trigger-it-declares
+  (if-not port
+    (println "groundwork-postgres.references-test: skipped, POSTGRES_TEST_PORT is not set")
+    (with-empty-database
+      (fn [pool]
+        (testing "made on a fresh database, and Postgres's matches the map"
+          (migrate-and-wait! pool [shops guarded-orders])
+          (is (= nothing-to-do (plan-of pool [shops guarded-orders])))
+          (is (true? (postgres/does-database-match-tables? pool (declare-with-fill [shops guarded-orders]) [])))
+          (is (= [{:trigger/level "statement" :trigger/timing "before" :trigger/on-truncate true}]
+                 (find-rows pool (str "SELECT CASE WHEN tgtype & 1 = 1 THEN 'row' ELSE 'statement' END AS trigger__level,"
+                                      " CASE WHEN tgtype & 2 = 2 THEN 'before' ELSE 'after' END AS trigger__timing,"
+                                      " tgtype & 32 = 32 AS trigger__on_truncate"
+                                      " FROM pg_trigger WHERE tgrelid = 'orders'::regclass AND NOT tgisinternal")))))
+        (let [shop (:shop/id (first (find-rows pool "INSERT INTO shops DEFAULT VALUES RETURNING shop__id")))]
+          (run-sql! pool (str "INSERT INTO orders (order__shop_id) VALUES ('" shop "')"))
+          (testing "a TRUNCATE is refused, of the table or through a cascade, and the rows kept"
+            (is (thrown-with-msg? Exception #"TRUNCATE of orders is refused" (run-sql! pool "TRUNCATE orders")))
+            (is (thrown-with-msg? Exception #"TRUNCATE of orders is refused" (run-sql! pool "TRUNCATE shops CASCADE")))
+            (is (= 1 (count (find-rows pool "SELECT order__id FROM orders")))))
+          (testing "a DELETE isn't TRUNCATE"
+            (run-sql! pool "DELETE FROM orders")
+            (is (= [] (find-rows pool "SELECT order__id FROM orders")))))
+        (testing "in no map: it goes, and TRUNCATE runs"
+          (is (= [:drop] (map #(if (str/starts-with? (:sql %) "DROP TRIGGER orders_trigger_") :drop (:sql %))
+                              (:instant (plan-of pool [shops orders])))))
+          (migrate-and-wait! pool [shops orders])
+          (run-sql! pool "TRUNCATE orders")
+          (is (= nothing-to-do (plan-of pool [shops orders]))))
+        (testing "migrated onto a table Postgres has: BEFORE TRUNCATE … FOR EACH STATEMENT, in the instant part"
+          (let [{:keys [instant slow]} (plan-of pool [shops guarded-orders])]
+            (is (re-matches #"CREATE TRIGGER orders_trigger_[0-9a-f]{8} BEFORE TRUNCATE ON orders FOR EACH STATEMENT EXECUTE FUNCTION public\.refuse_truncate\(\)"
+                            (:sql (first instant))))
+            (is (= 1 (count instant)))
+            (is (= [] slow)))
+          (migrate-and-wait! pool [shops guarded-orders])
+          (is (= nothing-to-do (plan-of pool [shops guarded-orders])))
+          (is (thrown-with-msg? Exception #"TRUNCATE of orders is refused" (run-sql! pool "TRUNCATE orders"))))
+        (testing "with other events: one trigger, its events in order; another trigger, the old one dropped"
+          (let [sqls (map :sql (:instant (plan-of pool [shops (assoc-in guarded-orders [:triggers 0 :events] #{:truncate :insert})])))]
+            (is (= 2 (count sqls)))
+            (is (str/starts-with? (first sqls) "DROP TRIGGER orders_trigger_"))
+            (is (re-find #" BEFORE INSERT OR TRUNCATE ON orders FOR EACH STATEMENT " (second sqls)))))))))

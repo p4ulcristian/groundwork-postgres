@@ -1,5 +1,7 @@
 # A table map says references over several columns, and the triggers a library declares
 
+> **Added to** by [A declared trigger may be called on TRUNCATE](2026-10-31-a-declared-trigger-may-be-called-on-truncate.md) (2026-10-31, on main): `:events` may hold `:truncate`, on a trigger `:for-each :statement`.
+
 > **Changed in part** by [A trigger says when it is called](2026-10-23-a-trigger-says-when-it-is-called.md) (2026-10-23, on tidy-up): a declared trigger writes out `:when`, nil or a SQL condition.
 
 > **Changed in part** by [A reference writes out what it does on delete, on update, and when it is checked](2026-10-23-a-reference-writes-out-what-it-does-on-delete-update-and-when-checked.md) (2026-10-23, on tidy-up): a several-column reference writes out `:on-delete` and `:checked-at` too, and `:on-update` takes `:set-null` and `:restrict` as well.
