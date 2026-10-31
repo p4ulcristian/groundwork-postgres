@@ -11,7 +11,7 @@ message and runs nothing; what a map can't say (a rename, a drop, a backfill)
 is a change, given as data and run once.
 
 ```clojure
-io.github.p4ulcristian/groundwork-postgres {:git/tag "v0.5.0" :git/sha "bca8150"}
+io.github.p4ulcristian/groundwork-postgres {:git/tag "v0.5.1" :git/sha "a762c08"}
 ```
 
 Needs only next.jdbc, PgJDBC, HikariCP (with slf4j-jdk14), jsonista, malli,
