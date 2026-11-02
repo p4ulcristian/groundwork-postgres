@@ -63,6 +63,7 @@
   [tables]
   {:tables     tables
    :extensions []
+   :provider-extensions []
    :functions  ["groundwork_postgres/fill_job.sql" "groundwork_postgres/count_moves.sql" "groundwork_postgres/refuse_truncate.sql"]
    :views      []})
 

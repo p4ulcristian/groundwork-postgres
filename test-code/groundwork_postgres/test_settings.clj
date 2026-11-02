@@ -94,4 +94,4 @@
   "What make-plan-from-tables and migrate! take: these tables, and no
    extensions, functions or views."
   [tables]
-  {:tables tables :extensions [] :functions [] :views []})
+  {:tables tables :extensions [] :provider-extensions [] :functions [] :views []})

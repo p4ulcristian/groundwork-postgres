@@ -366,19 +366,31 @@
    [:name :string]
    [:sql :string]])
 
+(defn- names-each-extension-in-one-list? [{:keys [extensions provider-extensions]}]
+  (or (not (sequential? extensions)) (not (sequential? provider-extensions))
+      (empty? (filter (set extensions) provider-extensions))))
+
 (def declared-shape
   "What the app declares its database has, every key written out:
    :tables, the table maps; :extensions, the extensions' names
-   (\"pg_trgm\"), [] for none; :functions, each the .sql file on the
-   classpath that makes it, one CREATE OR REPLACE FUNCTION, or a function
-   a library made (made-function-shape), [] for none; :views, the .sql
-   files that make its views, one CREATE VIEW each, in the order they are
-   made (a view after those it reads), [] for none."
-  [:map {:closed true}
-   [:tables tables-shape]
-   [:extensions [:sequential :string]]
-   [:functions [:sequential [:or :string made-function-shape]]]
-   [:views [:sequential :string]]])
+   (\"pg_trgm\"), [] for none; :provider-extensions, the names of the
+   extensions the database's provider put in it and keeps (Neon's
+   \"pg_session_jwt\"), which groundwork-postgres never makes, never drops
+   and lets be, [] for none, an extension in one list only; :functions,
+   each the .sql file on the classpath that makes it, one CREATE OR
+   REPLACE FUNCTION, or a function a library made (made-function-shape),
+   [] for none; :views, the .sql files that make its views, one CREATE
+   VIEW each, in the order they are made (a view after those it reads),
+   [] for none."
+  [:and
+   [:map {:closed true}
+    [:tables tables-shape]
+    [:extensions [:sequential :string]]
+    [:provider-extensions [:sequential :string]]
+    [:functions [:sequential [:or :string made-function-shape]]]
+    [:views [:sequential :string]]]
+   [:fn {:error/message "an extension is in :extensions or :provider-extensions, not both"}
+    names-each-extension-in-one-list?]])
 
 ;; -----------------------------------------------------------------------------
 ;; Checking

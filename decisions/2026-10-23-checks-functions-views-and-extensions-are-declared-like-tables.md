@@ -1,5 +1,7 @@
 # Checks, functions, views and extensions are declared, compared and dropped like tables
 
+> **Added to** by [The database's provider's extensions are declared, and let be](2026-11-02-the-providers-extensions-are-declared-and-let-be.md) (2026-11-02, v0.5.2): beside `:extensions`, `:provider-extensions`, never made, never dropped, no stop.
+
 > The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md section 1: 191 checks, 21 functions, 15 views, 3 extensions; defaults `uuidv7()` 95, jsonb/array literals 44, `CURRENT_DATE` 1). Builds on [cellar adopts what the database already has](2026-10-23-cellar-adopts-what-the-database-has-by-asking-postgres.md). Built on tidy-up, not released.
 
 **What was wrong:** cellar read only checks named `_enum`/`_not_null`; functions, views and extensions lived only in change files, and on a fresh database (tests, previews) a change file is marked done, never run, so a fresh database had none of them. A default outside cellar's few words (`uuidv7()`) would be turned into `gen_random_uuid()`.

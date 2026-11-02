@@ -670,10 +670,11 @@
    missing, and the declared functions Postgres hasn't, or has printed
    otherwise, made (CREATE OR REPLACE, bodies unchecked, so a function may
    read a column this plan adds). An extension in no list is a stop: its
-   types may hold data. The views to make after the tables are kept for
-   plan-objects-after."
+   types may hold data; one of the provider's (:provider-extensions) is
+   let be, never made, there or not. The views to make after the tables
+   are kept for plan-objects-after."
   [state {:keys [objects declared printed pending]}]
-  (let [{:keys [extensions functions views]} declared
+  (let [{:keys [extensions provider-extensions functions views]} declared
         drops   (find-views-to-drop (:views objects) views (:views printed) pending)
         to-make (filterv #(or (not (contains? (:views objects) (:view-name %))) (contains? drops (:view-name %))) views)
         folders (distinct (remove (:folders objects)
@@ -696,9 +697,10 @@
               state extensions)
       (reduce (fn [state extension]
                 (add-stop state (str "extension " extension " is in the database but in no list: add it to :extensions, "
+                                     "or to :provider-extensions when the database's provider keeps it, "
                                      "or drop it by hand (its types may hold data)")))
               state
-              (sort (remove (into #{"plpgsql"} extensions) (:extensions objects))))
+              (sort (remove (into #{"plpgsql"} (concat extensions provider-extensions)) (:extensions objects))))
       (if (seq to-run)
         (add-instant state "SET LOCAL check_function_bodies = off" "functions are made before the tables and columns they read")
         state)

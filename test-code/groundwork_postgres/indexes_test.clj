@@ -25,7 +25,7 @@
 (defn- declare-with-trigrams
   "These tables, and pg_trgm, whose operator class a gin index uses."
   [tables]
-  {:tables tables :extensions ["pg_trgm"] :functions [] :views []})
+  {:tables tables :extensions ["pg_trgm"] :provider-extensions [] :functions [] :views []})
 
 (defn- plan-of [pool tables]
   (select-keys (postgres/make-plan-from-tables pool (declare-with-trigrams tables) []) [:instant :slow :stops :changes-to-mark]))

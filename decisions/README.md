@@ -21,7 +21,7 @@ The first three were made while cellar was a library inside Groundwork, a Clojur
 - [A trigger says when it is called](2026-10-23-a-trigger-says-when-it-is-called.md)
 - [The references no map names go before the changes](2026-10-23-references-no-map-names-go-before-the-changes.md)
 - [A column's type states Postgres's limit, in malli's words](2026-10-23-a-columns-type-states-postgres-limit-in-malli-words.md), added to by [A column changes type by a change the plan understands](2026-10-23-a-column-changes-type-by-a-change-the-plan-understands.md)
-- [Checks, functions, views and extensions are declared, compared and dropped like tables](2026-10-23-checks-functions-views-and-extensions-are-declared-like-tables.md), changed in part by [:functions may be SQL text a library makes, as well as files](2026-10-23-functions-may-be-sql-text-a-library-makes.md)
+- [Checks, functions, views and extensions are declared, compared and dropped like tables](2026-10-23-checks-functions-views-and-extensions-are-declared-like-tables.md), changed in part by [:functions may be SQL text a library makes, as well as files](2026-10-23-functions-may-be-sql-text-a-library-makes.md), added to by [The database's provider's extensions are declared, and let be](2026-11-02-the-providers-extensions-are-declared-and-let-be.md)
 - [:functions may be SQL text a library makes, as well as files](2026-10-23-functions-may-be-sql-text-a-library-makes.md)
 - [A column changes type by a change the plan understands](2026-10-23-a-column-changes-type-by-a-change-the-plan-understands.md)
 - [A transaction keeps work to run after its commit; work that must happen is a job](2026-10-23-a-transaction-keeps-work-to-run-after-its-commit.md)
@@ -29,3 +29,4 @@ The first three were made while cellar was a library inside Groundwork, a Clojur
 - [Text and names in the SQL groundwork-postgres makes are quoted by PgJDBC](2026-10-27-text-and-names-in-made-sql-are-quoted-by-pgjdbc.md) (v0.5.0)
 - [A reference over several columns may set only some of its columns to null on delete](2026-10-31-a-reference-may-set-only-some-of-its-columns-to-null-on-delete.md)
 - [A declared trigger may be called on TRUNCATE](2026-10-31-a-declared-trigger-may-be-called-on-truncate.md)
+- [The database's provider's extensions are declared, and let be](2026-11-02-the-providers-extensions-are-declared-and-let-be.md) (v0.5.2)

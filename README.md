@@ -110,12 +110,14 @@ and [groundwork-settings](https://github.com/p4ulcristian/groundwork-settings) (
    :gates     nil
    :on-change nil})
 
-;; beside the tables, every key written out: the extensions, the functions (a .sql file each, one
-;; CREATE OR REPLACE FUNCTION, or {:name :sql} a library made) and the views (one CREATE VIEW each, in order)
-(postgres/migrate! pool {:tables     [shops orders partner-payouts]
-                       :extensions ["pg_trgm"]                          ; the gin index's gin_trgm_ops
-                       :functions  ["app/db/next_order_number.sql"]
-                       :views      ["app/db/shop_totals.sql"]}
+;; beside the tables, every key written out: the extensions, the provider's extensions (let be), the
+;; functions (a .sql file each, one CREATE OR REPLACE FUNCTION, or {:name :sql} a library made) and the
+;; views (one CREATE VIEW each, in order)
+(postgres/migrate! pool {:tables              [shops orders partner-payouts]
+                       :extensions          ["pg_trgm"]                 ; the gin index's gin_trgm_ops
+                       :provider-extensions ["pg_session_jwt"]          ; Neon's, in the database, not the app's
+                       :functions           ["app/db/next_order_number.sql"]
+                       :views               ["app/db/shop_totals.sql"]}
                  [{:id "2026-10-23-rename-order-note" :rename-column [:orders :order/note :order/customer-note]}
                   {:id "2026-10-24-currency-to-text" :change-column-type :shop/currency :from "character(3)"}]
                  {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}   ; an ALTER waits 5 s for its lock, then fails
@@ -176,7 +178,10 @@ differs, or reads a column a pending change drops, is dropped before the
 changes and made again after the tables, with every view over it. A
 function or a view in the maps' folders that nothing declared makes is dropped; an
 extension no list names is a stop (its types may hold data), plpgsql
-aside. A view made again loses its grants until `grant-tables-to-role!`
+aside. An extension the database's provider put in it and keeps (Neon's
+`pg_session_jwt`, which its owner can't drop) goes in
+`:provider-extensions`: never made, never dropped, no stop, there or not
+([why](decisions/2026-11-02-the-providers-extensions-are-declared-and-let-be.md)). A view made again loses its grants until `grant-tables-to-role!`
 runs again. A fresh database gets them all, from the files, never from the
 changes' history.
 

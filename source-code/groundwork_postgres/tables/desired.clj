@@ -349,7 +349,7 @@
 
 (defn turn-declared-into-desired
   "The extensions, functions and views the app declares, their files read:
-   {:extensions [name] :functions [{:key :source :from :folder :name :sql
+   {:extensions [name] :provider-extensions [name] :functions [{:key :source :from :folder :name :sql
    :header :rest}] :views [{:file :view-name :sql :header :rest}]}, :header
    and :rest what comes before and after the name, so the probe can make
    it under another. A function is a .sql file's path, or a function a
@@ -358,17 +358,18 @@
    file that isn't one CREATE OR REPLACE FUNCTION (or CREATE VIEW) with a
    plain name throws :groundwork-postgres/bad-file; a made function that isn't one, or
    makes another name than its :name, :groundwork-postgres/bad-function."
-  [{:keys [extensions functions views]}]
-  {:extensions (vec extensions)
-   :functions  (vec (map-indexed turn-function-into-desired functions))
-   :views      (vec (for [path views
-                          :let [sql-text (read-sql-file path)
-                                [header-and-name header folder view-name]
-                                (or (re-find view-header sql-text)
-                                    (throw-bad-file path "a view's file starts with CREATE VIEW and a plain name"))]]
-                      (do (check-no-params path sql-text)
-                          {:file      path
-                           :view-name (if (and folder (not= "public" folder)) (str folder "." view-name) view-name)
-                           :header    header
-                           :rest      (subs sql-text (count header-and-name))
-                           :sql       sql-text})))})
+  [{:keys [extensions provider-extensions functions views]}]
+  {:extensions          (vec extensions)
+   :provider-extensions (vec provider-extensions)
+   :functions           (vec (map-indexed turn-function-into-desired functions))
+   :views               (vec (for [path views
+                                    :let [sql-text (read-sql-file path)
+                                          [header-and-name header folder view-name]
+                                          (or (re-find view-header sql-text)
+                                              (throw-bad-file path "a view's file starts with CREATE VIEW and a plain name"))]]
+                                (do (check-no-params path sql-text)
+                                    {:file      path
+                                     :view-name (if (and folder (not= "public" folder)) (str folder "." view-name) view-name)
+                                     :header    header
+                                     :rest      (subs sql-text (count header-and-name))
+                                     :sql       sql-text})))})

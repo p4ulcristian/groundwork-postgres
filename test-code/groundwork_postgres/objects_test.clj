@@ -53,6 +53,7 @@
 (def ^:private declared
   {:tables     [jobs]
    :extensions ["pg_trgm"]
+   :provider-extensions []
    :functions  ["groundwork_postgres/objects/count_jobs.sql"]
    :views      ["groundwork_postgres/objects/jobs_per_shop.sql" "groundwork_postgres/objects/busy_shops.sql"]})
 
@@ -128,25 +129,25 @@
     (with-empty-database
       (fn [pool]
         (let [plain (assoc jobs :checks [])
-              only  {:tables [plain] :extensions [] :functions [] :views []}]
+              only  {:tables [plain] :extensions [] :provider-extensions [] :functions [] :views []}]
           (migrate-and-wait! pool only [])
           (run-sql! pool (str "INSERT INTO jobs (job__shop_id) VALUES ('" (random-uuid) "')"))
           (testing "added to a table with rows: NOT VALID now, proven in the slow part"
-            (let [{:keys [instant slow]} (plan-of pool {:tables [jobs] :extensions [] :functions [] :views []} [])]
+            (let [{:keys [instant slow]} (plan-of pool {:tables [jobs] :extensions [] :provider-extensions [] :functions [] :views []} [])]
               (is (re-find #"^ALTER TABLE jobs ADD CONSTRAINT jobs_check_\w+ CHECK \(jsonb_typeof\(job__photos\) = 'array'\) NOT VALID$"
                            (:sql (first instant))))
               (is (re-find #"^ALTER TABLE jobs VALIDATE CONSTRAINT jobs_check_" (:sql (first slow))))))
           (testing "one made by hand, the same condition, is adopted"
             (run-sql! pool "ALTER TABLE jobs ADD CONSTRAINT photos_are_a_list CHECK (jsonb_typeof(job__photos) = 'array')")
             (let [before (get (find-oids pool) "photos_are_a_list")
-                  {:keys [instant slow]} (plan-of pool {:tables [jobs] :extensions [] :functions [] :views []} [])]
+                  {:keys [instant slow]} (plan-of pool {:tables [jobs] :extensions [] :provider-extensions [] :functions [] :views []} [])]
               (is (= 1 (count instant)))
               (is (re-find #"^ALTER TABLE jobs RENAME CONSTRAINT photos_are_a_list TO jobs_check_" (:sql (first instant))))
               (is (= [] slow))
-              (migrate-and-wait! pool {:tables [jobs] :extensions [] :functions [] :views []} [])
+              (migrate-and-wait! pool {:tables [jobs] :extensions [] :provider-extensions [] :functions [] :views []} [])
               (is (= #{before} (set (keep (fn [[n oid]] (when (str/starts-with? n "jobs_check_") oid)) (find-oids pool)))))))
           (testing "a condition Postgres refuses is a stop, in its words"
-            (let [{:keys [stops]} (plan-of pool {:tables [(assoc jobs :checks ["job__nothing > 0"])] :extensions [] :functions [] :views []} [])]
+            (let [{:keys [stops]} (plan-of pool {:tables [(assoc jobs :checks ["job__nothing > 0"])] :extensions [] :provider-extensions [] :functions [] :views []} [])]
               (is (= 1 (count stops)))
               (is (re-find #"jobs's check jobs_check_\w+ can't be made: .*job__nothing" (first stops))))))))))
 
@@ -156,8 +157,54 @@
     (with-empty-database
       (fn [pool]
         (run-sql! pool "CREATE EXTENSION IF NOT EXISTS pg_trgm")
-        (is (= ["extension pg_trgm is in the database but in no list: add it to :extensions, or drop it by hand (its types may hold data)"]
-               (:stops (plan-of pool {:tables [jobs] :extensions [] :functions [] :views []} []))))))))
+        (is (= [(str "extension pg_trgm is in the database but in no list: add it to :extensions, or to :provider-extensions "
+                     "when the database's provider keeps it, or drop it by hand (its types may hold data)")]
+               (:stops (plan-of pool {:tables [jobs] :extensions [] :provider-extensions [] :functions [] :views []} []))))))))
+
+(defn- find-extensions [pool]
+  (set (map :extname (find-rows pool "SELECT extname::text AS extname FROM pg_extension"))))
+
+(deftest a-providers-extension-is-let-be
+  (if-not port
+    (println "groundwork-postgres.objects-test: skipped, POSTGRES_TEST_PORT is not set")
+    (let [only-jobs {:tables [jobs] :extensions [] :provider-extensions ["hstore"] :functions [] :views []}]
+      (testing "a database holding it migrates, and keeps it"
+        (with-empty-database
+          (fn [pool]
+            ;; as a provider puts one in: by hand, before the app's first migrate
+            (run-sql! pool "CREATE EXTENSION hstore")
+            (is (= [] (:stops (plan-of pool only-jobs []))))
+            (migrate-and-wait! pool only-jobs [])
+            (is (= nothing-to-do (plan-of pool only-jobs [])))
+            (is (postgres/does-database-match-tables? pool only-jobs []))
+            (is (contains? (find-extensions pool) "hstore") "never dropped")
+            (testing "beside a declared one, which is made"
+              (let [both (assoc only-jobs :extensions ["pg_trgm"])]
+                (migrate-and-wait! pool both [])
+                (is (= #{"plpgsql" "pg_trgm" "hstore"} (find-extensions pool)))
+                (is (= nothing-to-do (plan-of pool both []))))))))
+      (testing "one the database hasn't is no stop and isn't made"
+        (with-empty-database
+          (fn [pool]
+            (let [{:keys [instant stops]} (plan-of pool only-jobs [])]
+              (is (= [] stops))
+              (is (not-any? #(str/includes? (:sql %) "EXTENSION") instant)))
+            (migrate-and-wait! pool only-jobs [])
+            (is (not (contains? (find-extensions pool) "hstore")))
+            (is (= nothing-to-do (plan-of pool only-jobs [])))))))))
+
+(deftest an-extension-is-in-one-list
+  (let [{:keys [type errors]} (ex-data (try (postgres/make-plan-from-tables
+                                             nil {:tables [jobs] :extensions ["hstore"] :provider-extensions ["hstore"]
+                                                  :functions [] :views []}
+                                             [])
+                                            (catch Exception e e)))]
+    (is (= :groundwork-postgres/bad-tables type))
+    (is (= ["an extension is in :extensions or :provider-extensions, not both"] errors)))
+  (is (= :groundwork-postgres/bad-tables
+         (:type (ex-data (try (postgres/make-plan-from-tables nil {:tables [jobs] :extensions [] :functions [] :views []} [])
+                              (catch Exception e e)))))
+      ":provider-extensions is written out"))
 
 (deftest a-file-is-one-function-or-view
   (doseq [file ["groundwork_postgres/objects/with_param.sql" "groundwork_postgres/objects/not_a_function.sql"]]

@@ -39,7 +39,7 @@
         :gates     nil
         :on-change nil})
 
-     (database/migrate! pool {:tables [shops orders] :extensions [] :functions [] :views []} changes
+     (database/migrate! pool {:tables [shops orders] :extensions [] :provider-extensions [] :functions [] :views []} changes
                         {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
                          :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}
                          :log          log})   ; the app's log function (groundwork-logs's)
@@ -93,11 +93,14 @@
    from data, {:name \"groundwork_access.denied_ab12\" :sql \"CREATE OR REPLACE
    FUNCTION groundwork_access.denied_ab12() …\"}) and the .sql files of its views
    (one CREATE VIEW each, in order), every key written out: {:tables [...]
-   :extensions [\"pg_trgm\"] :functions [\"app/db/next_job_number.sql\"]
-   :views [\"app/db/report_totals.sql\"]}. They are compared as Postgres
-   prints them and made extensions first, then functions, tables, views; a
-   function or view in the maps' folders that nothing declared makes is dropped, an
-   extension no list names is a stop. A table's :checks are SQL
+   :extensions [\"pg_trgm\"] :provider-extensions [] :functions
+   [\"app/db/next_job_number.sql\"] :views [\"app/db/report_totals.sql\"]}.
+   They are compared as Postgres prints them and made extensions first,
+   then functions, tables, views; a function or view in the maps' folders
+   that nothing declared makes is dropped, an extension no list names is a
+   stop. :provider-extensions names the extensions the database's provider
+   put in it and keeps (Neon's pg_session_jwt), which the app neither makes
+   nor drops: never made, never dropped, let be, there or not. A table's :checks are SQL
    conditions, [\"jsonb_typeof(order__photos) = 'array'\"].
 
    Changes are data, for what a map can't say; each runs once, remembered in
@@ -395,6 +398,7 @@
 
      {:tables     [shops orders]                     ; the table maps
       :extensions [\"pg_trgm\"]                       ; [] for none
+      :provider-extensions [\"pg_session_jwt\"]        ; the provider's, let be; [] for none
       :functions  [\"app/db/next_job_number.sql\"    ; one CREATE OR REPLACE FUNCTION per file,
                    {:name \"groundwork_access.denied_ab12\"  ; or one a library made, its name as its SQL writes it;
                     :sql  \"CREATE OR …\"}]       ; [] for none

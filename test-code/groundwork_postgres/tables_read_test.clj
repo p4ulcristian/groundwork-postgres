@@ -112,7 +112,7 @@
 (defn- declare-with-tell
   "These tables, and the function their change triggers call (postgres/tell_test.sql)."
   [tables]
-  {:tables tables :extensions [] :functions ["groundwork_postgres/tell_test.sql"] :views []})
+  {:tables tables :extensions [] :provider-extensions [] :functions ["groundwork_postgres/tell_test.sql"] :views []})
 
 (deftest change-triggers
   (if-not port
