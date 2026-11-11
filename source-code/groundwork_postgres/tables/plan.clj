@@ -22,6 +22,12 @@
    [groundwork-postgres.tables.quotes :as quotes]
    [groundwork-postgres.queries.postgres :as sql]))
 
+(defn- reads-column?
+  "Whether the check `condition` (as Postgres prints it) names `column`."
+  [condition column]
+  (boolean (and condition
+                (re-find (re-pattern (str "(?<![\\w])" (java.util.regex.Pattern/quote column) "(?![\\w])")) condition))))
+
 (defn- statement [sql-text why] {:sql sql-text :why why})
 
 (defn- add-instant [state sql-text why] (update state :instant conj (statement sql-text why)))
@@ -193,6 +199,8 @@
                                        (update :foreign-keys #(into {} (remove (fn [[_ {:keys [columns]}]] (some uses? columns))) %))
                                        (update :uniques #(into {} (remove (fn [[_ {:keys [columns]}]] (some uses? columns))) %))
                                        (update :not-null-checks #(into {} (remove (comp uses? :column val)) %))
+                                       ;; Postgres drops a table's checks that read the column with it
+                                       (update :checks #(into {} (remove (fn [[_ {:keys [condition]}]] (reads-column? condition column))) %))
                                        (update :indexes #(into {} (remove (fn [[_ {:keys [columns]}]] (some uses? columns))) %)))))))))
 
       drop-table

@@ -151,6 +151,22 @@
               (is (= 1 (count stops)))
               (is (re-find #"jobs's check jobs_check_\w+ can't be made: .*job__nothing" (first stops))))))))))
 
+(deftest a-dropped-column-takes-its-checks-with-it
+  (if-not port
+    (println "groundwork-postgres.objects-test: skipped, POSTGRES_TEST_PORT is not set")
+    (with-empty-database
+      (fn [pool]
+        (let [with-check (assoc jobs :checks ["job__note <> ''"])
+              all        {:tables [with-check] :extensions [] :provider-extensions [] :functions [] :views []}
+              noteless   {:tables [(-> jobs (assoc :checks []) (update :columns #(vec (butlast %))))]
+                          :extensions [] :provider-extensions [] :functions [] :views []}
+              changes    [{:id "c1" :drop-column [:jobs :job/note] :why "notes moved"}]]
+          (migrate-and-wait! pool all [])
+          (is (= ["ALTER TABLE jobs DROP COLUMN job__note"] (map :sql (:instant (plan-of pool noteless changes))))
+              "Postgres drops the check with the column: no DROP CONSTRAINT of a check that is gone")
+          (migrate-and-wait! pool noteless changes)
+          (is (= nothing-to-do (plan-of pool noteless changes))))))))
+
 (deftest an-extension-no-list-names-is-a-stop
   (if-not port
     (println "groundwork-postgres.objects-test: skipped, POSTGRES_TEST_PORT is not set")
