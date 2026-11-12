@@ -114,6 +114,12 @@
       {:id \"2026-10-27-fill-priority\"     :run-sql-file \"app/changes/fill_priority.sql\"}
       {:id \"2026-10-28-currency-to-text\"  :change-column-type :price-sheet/currency :from \"character(3)\"}]
 
+   A drop whose column or table Postgres hasn't (never made there, or
+   gone already) runs nothing and is marked done: a database that skipped
+   the deploys between a column's making and its drop takes the same
+   changes. A misspelt drop still stops, at the column or table it left:
+   that one is in Postgres but in no map.
+
    A type change moves a column from the type Postgres has (:from, as
    Postgres prints it; else a stop) to its map's: the column's one map
    names the table, the plan compares the column as if it had run, and it

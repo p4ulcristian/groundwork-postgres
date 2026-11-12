@@ -30,3 +30,4 @@ The first three were made while cellar was a library inside Groundwork, a Clojur
 - [A reference over several columns may set only some of its columns to null on delete](2026-10-31-a-reference-may-set-only-some-of-its-columns-to-null-on-delete.md)
 - [A declared trigger may be called on TRUNCATE](2026-10-31-a-declared-trigger-may-be-called-on-truncate.md)
 - [The database's provider's extensions are declared, and let be](2026-11-02-the-providers-extensions-are-declared-and-let-be.md) (v0.5.2)
+- [A drop with nothing to drop is only marked done](2026-11-12-a-drop-with-nothing-to-drop-is-only-marked-done.md) (v0.5.4)

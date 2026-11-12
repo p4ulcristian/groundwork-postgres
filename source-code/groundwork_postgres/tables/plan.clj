@@ -184,8 +184,11 @@
             column     (names/turn-key-into-column-name column-key)]
         (cond
           (not why) (stop "a drop needs a :why")
+          ;; Postgres never had it, or it is gone already (a database that
+          ;; skipped the deploys between its making and its drop): what the
+          ;; drop is for is so, nothing runs, and the change is marked done
           (not (some #{column} (map :name (get-in catalog [table-name :columns]))))
-          (stop (str "there is no column " table-name "." column " to drop"))
+          state
           (seq (find-references-to catalog table-name column))
           (stop (str table-name "." column " is referenced by " (str/join ", " (find-references-to catalog table-name column))
                      "; remove those references from their maps first"))
@@ -207,7 +210,8 @@
       (let [table-name (names/turn-table-key-into-table-name drop-table)]
         (cond
           (not why) (stop "a drop needs a :why")
-          (not (contains? catalog table-name)) (stop (str "there is no table " table-name " to drop"))
+          ;; nothing to drop: only marked done, as a column's drop is
+          (not (contains? catalog table-name)) state
           (seq (find-references-to catalog table-name nil))
           (stop (str table-name " is referenced by " (str/join ", " (find-references-to catalog table-name nil))
                      "; remove those references from their maps first"))

@@ -12,6 +12,8 @@
 
 > **Changed in part** by [Every value that sets behaviour is a setting](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, v0.1.2): each part of a plan runs under its own time limits, which `run-instant-part!`, `run-slow-part!` and `migrate!` take, not the pool's; a table map writes out `:indexes`, `:gates` and `:on-change`, and a column its five options.
 
+> **Changed in part** by [A drop with nothing to drop is only marked done](2026-11-12-a-drop-with-nothing-to-drop-is-only-marked-done.md) (2026-11-12, v0.5.4): a `:drop-column` or `:drop-table` whose column or table Postgres hasn't runs nothing and is marked done; it was a stop.
+
 > Builds on Groundwork's decision "A table is one map".
 
 **Decision:**

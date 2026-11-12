@@ -161,3 +161,30 @@
             (is (= 3 (count (:slow plan))))
             (migrate-and-wait! pool [shops required] [])
             (is (= nothing-to-do (plan-of pool [shops required] [])))))))))
+
+(deftest a-drop-with-nothing-to-drop-is-only-marked-done
+  (if-not port
+    (println "groundwork-postgres.tables-test: skipped, POSTGRES_TEST_PORT is not set")
+    (with-empty-database
+      (fn [pool]
+        (let [drops         [{:id "d1" :drop-column [:orders :order/fax] :why "no faxes since 2019"}
+                             {:id "d2" :drop-table :old-things :why "nothing reads them"}]
+              without-note  (update orders :columns (partial filterv #(not= :order/note (first %))))]
+          (migrate-and-wait! pool [shops orders] [])
+
+          (testing "a column and a table Postgres never had: no stop, nothing runs, both marked done"
+            (is (= {:instant [] :slow [] :stops [] :changes-to-mark ["d1" "d2"]} (plan-of pool [shops orders] drops)))
+            (migrate-and-wait! pool [shops orders] drops)
+            (is (= nothing-to-do (plan-of pool [shops orders] drops))))
+
+          (testing "a misspelt drop still stops, at the column it left"
+            (let [plan (plan-of pool [shops without-note] (conj drops {:id "d3" :drop-column [:orders :order/nota] :why "notes moved"}))]
+              (is (some #(re-find #"order__note is in Postgres but in no map" %) (:stops plan)))))
+
+          (testing "a column Postgres has is dropped as before"
+            (let [drop-note (conj drops {:id "d4" :drop-column [:orders :order/note] :why "notes moved"})
+                  plan      (plan-of pool [shops without-note] drop-note)]
+              (is (= ["ALTER TABLE orders DROP COLUMN order__note"] (map :sql (:instant plan))))
+              (is (= [] (:stops plan)))
+              (migrate-and-wait! pool [shops without-note] drop-note)
+              (is (= nothing-to-do (plan-of pool [shops without-note] drop-note))))))))))

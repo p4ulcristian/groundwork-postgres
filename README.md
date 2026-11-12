@@ -284,7 +284,9 @@ arguments (`{:function "app.tell_change" :arguments ["order__id"]}`), called
 by statement triggers after each insert, update and delete, with the changed
 rows as `groundwork_postgres_new_rows` and `groundwork_postgres_old_rows`. groundwork-postgres makes neither: the
 app, or a library on top, passes them in. groundwork-postgres keeps the changes it has run
-in its own table, `groundwork_postgres.changes_done`. A reference no map names is dropped before the
+in its own table, `groundwork_postgres.changes_done`. A drop whose column or table Postgres hasn't
+runs nothing and is marked done
+([why](decisions/2026-11-12-a-drop-with-nothing-to-drop-is-only-marked-done.md)). A reference no map names is dropped before the
 changes run, so a table only it pointed at can be dropped in the same
 deploy ([why](decisions/2026-10-23-references-no-map-names-go-before-the-changes.md)).
 
