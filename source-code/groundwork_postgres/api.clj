@@ -179,6 +179,7 @@
    [groundwork-postgres.tables.plan :as plan]
    [groundwork-postgres.tables.probe :as probe]
    [groundwork-postgres.tables.quotes :as quotes]
+   [groundwork-postgres.tables.seal :as seal]
    [groundwork-postgres.tables.types :as types]))
 
 ;; -----------------------------------------------------------------------------
@@ -396,6 +397,15 @@
                                      (str "SELECT EXISTS (SELECT 1 FROM " table-name ") AS has_rows"))
                                {})))
 
+(defn- find-folders-to-read
+  "The folders a plan reads: the maps', the files' functions' and views',
+   and those of the tables pending changes drop or rename away."
+  [desired files changes changes-done]
+  (-> (set (map names/find-folder-of-table (keys desired)))
+      (into (map :folder (:functions files)))
+      (into (map (comp names/find-folder-of-table :view-name) (:views files)))
+      (into (plan/list-folders-of-pending-changes changes changes-done))))
+
 (defn make-plan-from-tables
   "What would make Postgres match what the app declares and the changes,
    without changing anything: {:instant [{:sql :why}] :slow [{:sql :why}]
@@ -419,10 +429,7 @@
   (let [desired      (desired/turn-table-maps-into-desired (:tables declared))
         files        (desired/turn-declared-into-desired declared)
         changes-done (set (map :change-done/id (find-changes-done-if-any pool)))
-        folders      (-> (set (map names/find-folder-of-table (keys desired)))
-                         (into (map :folder (:functions files)))
-                         (into (map (comp names/find-folder-of-table :view-name) (:views files)))
-                         (into (plan/list-folders-of-pending-changes changes changes-done)))
+        folders      (find-folders-to-read desired files changes changes-done)
         catalog      (catalog/read-catalog pool folders)
         objects      (catalog/read-objects pool folders)
         {:keys [printed stops]} (probe/print-declared
@@ -489,6 +496,49 @@
           {:keys [sql why]} statements]
     (log :info :groundwork-postgres/planned {:groundwork-postgres/part part :groundwork-postgres/why why :groundwork-postgres/sql sql})))
 
+(defn- read-seal-sides
+  "Both sides the seal fingerprints (groundwork_postgres.tables.seal), read
+   now, without the probe: {:tables fingerprint :database fingerprint}."
+  [pool declared changes]
+  (settings/check-declared declared)
+  (let [desired      (desired/turn-table-maps-into-desired (:tables declared))
+        files        (desired/turn-declared-into-desired declared)
+        changes-done (set (map :change-done/id (find-changes-done-if-any pool)))
+        folders      (find-folders-to-read desired files changes changes-done)]
+    {:tables   (seal/make-tables-fingerprint {:desired desired :files files :changes changes})
+     :database (seal/make-database-fingerprint {:catalog        (catalog/read-catalog pool folders)
+                                                :objects        (catalog/read-objects pool folders)
+                                                :changes-done   changes-done
+                                                :server-version (seal/find-server-version pool)})}))
+
+(defn- is-sealed?
+  "Whether the seal stands: both sides read now fingerprint as the seal
+   says. No seal reads nothing more."
+  [pool declared changes]
+  (if-let [seal-row (seal/find-seal pool)]
+    (let [{:keys [tables database]} (read-seal-sides pool declared changes)]
+      (seal/does-seal-match? seal-row tables database))
+    false))
+
+(defn- is-plan-empty? [{:keys [instant slow stops changes-to-mark]}]
+  (every? empty? [instant slow stops changes-to-mark]))
+
+(defn- seal-when-matching!
+  "After a migrate's slow part: the seal, when nothing is left to do. A
+   plan that was empty seals at once; one that ran something is made
+   again, and seals when it comes back empty. A seal that can't be
+   written is logged, never the migrate's failure: the next check is then
+   a full one."
+  [pool declared changes plan log]
+  (if (or (is-plan-empty? plan) (is-plan-empty? (make-plan-from-tables pool declared changes)))
+    (try
+      (let [{:keys [tables database]} (read-seal-sides pool declared changes)]
+        (when (seal/write-seal! pool tables database)
+          (log :info :groundwork-postgres/sealed {})))
+      (catch java.sql.SQLException e
+        (log :warn :groundwork-postgres/seal-not-written {:error e})))
+    (log :warn :groundwork-postgres/seal-not-written {:groundwork-postgres/why "the plan made after the migrate still has work"})))
+
 (defn migrate!
   "Brings Postgres to what the app declares (make-plan-from-tables: its
    tables, extensions, functions and views), for development and the
@@ -504,22 +554,37 @@
       :log          log}                                                ; the app's
 
    Returns the plan with :slow-part, a future of the slow part (deref it to
-   wait)."
+   wait).
+
+   The seal (groundwork_postgres.tables.seal): when it stands, nothing is
+   planned (the plan is empty, :info :groundwork-postgres/seal-stands); after the slow
+   part, a plan left empty writes it (:info :groundwork-postgres/sealed)."
   [pool declared changes options]
   (settings/check-migrate-options options)
-  (let [plan (make-plan-from-tables pool declared changes)]
-    (run-instant-part! pool plan (:instant-part options))
-    (log-plan (:log options) plan)
-    (assoc plan :slow-part (future (run-slow-part! pool plan (:slow-part options))))))
+  (let [log (:log options)]
+    (seal/create-seal-table! pool)
+    (if (is-sealed? pool declared changes)
+      (do (log :info :groundwork-postgres/seal-stands {})
+          {:instant [] :slow [] :stops [] :changes-to-mark [] :slow-part (future nil)})
+      (let [plan (make-plan-from-tables pool declared changes)]
+        (run-instant-part! pool plan (:instant-part options))
+        (log-plan log plan)
+        (assoc plan :slow-part (future (run-slow-part! pool plan (:slow-part options))
+                                       (seal-when-matching! pool declared changes plan log)))))))
 
 (defn does-database-match-tables?
   "Whether Postgres has everything what the app declares (as
    make-plan-from-tables takes it) and the changes need to run: no
    instant part left, no stop, no change waiting. A slow part still to run
-   is allowed."
+   is allowed.
+
+   A standing seal (groundwork_postgres.tables.seal) answers yes without
+   making the plan: both sides fingerprint as when a full check last found
+   nothing to do. Otherwise the plan is made, as without a seal."
   [pool declared changes]
-  (let [{:keys [instant stops changes-to-mark]} (make-plan-from-tables pool declared changes)]
-    (and (empty? instant) (empty? stops) (empty? changes-to-mark))))
+  (or (is-sealed? pool declared changes)
+      (let [{:keys [instant stops changes-to-mark]} (make-plan-from-tables pool declared changes)]
+        (and (empty? instant) (empty? stops) (empty? changes-to-mark)))))
 
 (defn turn-table-into-row-shape
   "The malli shape of a table's rows, for groundwork-shaped-json: an optional column
@@ -568,16 +633,18 @@
   "Lets the app's own database role use the tables of these maps: their
    folders, their rows (select, insert, update, delete), and the functions
    in them. The role owns nothing, so the gates hold for it. It may also
-   read groundwork_postgres.changes_done, so it can check the database with
-   does-database-match-tables?. Run by migrate as the owner; safe to run
-   again."
+   read groundwork_postgres.changes_done and groundwork_postgres.seal, so it
+   can check the database with does-database-match-tables?; it can't write
+   the seal. Run by migrate as the owner; safe to run again."
   [pool tables role]
   (settings/check-tables tables)
   (sql/run-statement! pool create-changes-done {})
+  (seal/create-seal-table! pool)
   (sql/run-statement! pool (sql/make-query-from-sql-text
                             (str "grant groundwork_postgres.changes_done to " role)
                             (str "GRANT USAGE ON SCHEMA groundwork_postgres TO " role "; "
-                                 "GRANT SELECT ON groundwork_postgres.changes_done TO " role))
+                                 "GRANT SELECT ON groundwork_postgres.changes_done TO " role "; "
+                                 "GRANT SELECT ON groundwork_postgres.seal TO " role))
                       {})
   (doseq [folder (set (map (comp names/find-folder-of-table names/turn-table-key-into-table-name :table) tables))]
     (sql/run-statement! pool (sql/make-query-from-sql-text

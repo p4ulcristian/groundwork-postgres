@@ -156,6 +156,17 @@ column's is its `{:unique? true}`); one with a condition or an expression
 is an index with `:unique? true`. An index on a table with rows is built
 and dropped `CONCURRENTLY`, in the slow part; one no map names is dropped.
 
+A plan prints every table, check and index on a temporary table, one
+round trip after another: minutes against a remote Postgres. So once a
+migrate leaves nothing to do, it writes a seal, `groundwork_postgres.seal`:
+a fingerprint of what the app declares (and of groundwork-postgres's own
+files) and one of the catalog it reads (and Postgres's version). The next
+`migrate!` and `does-database-match-tables?` read the catalog again, a
+dozen queries, and skip the plan when both fingerprints equal the seal's
+(`:groundwork-postgres/seal-stands`); anything different, a hand edit
+included, gets the full plan. It sees the database's shape, never its rows
+([why](decisions/2026-11-17-a-sealed-database-is-checked-by-fingerprints.md)).
+
 A table map's `:checks` are SQL conditions every row holds
 (`["jsonb_typeof(order__photos) = 'array'"]`, `[]` for none), each named by
 a hash of its condition; added to a table with rows `NOT VALID`, then

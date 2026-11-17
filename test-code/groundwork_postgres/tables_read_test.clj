@@ -125,7 +125,7 @@
               "one trigger per insert, update and delete"))
         (let [lines (atom [])]
           @(:slow-part (database/migrate! pool (declare-with-tell [told-things]) [] (assoc test-settings/migrate-options :log (test-settings/make-log lines))))
-          (is (= [[:info :groundwork-postgres/planned :instant]]
+          (is (= [[:info :groundwork-postgres/planned :instant] [:info :groundwork-postgres/sealed nil]]
                  (distinct (map (fn [[level event data]] [level event (:groundwork-postgres/part data)]) @lines))))
           (is (some #(str/starts-with? (:groundwork-postgres/sql (nth % 2)) "CREATE TRIGGER") @lines)
               "each planned statement is written to the log, with its part and why"))
