@@ -26,6 +26,15 @@
       "a vector's order counts: a table's columns are in order")
   (is (nil? (seal/make-fingerprint {:on-change inc})) "a function can't be compared: no fingerprint"))
 
+(deftest a-fingerprint-never-changes-for-the-same-data
+  ;; pinned with v0.5.5's (sort-by pr-str xs): a changed order would make
+  ;; every sealed database look changed
+  (is (= "9c2ef014a58ff82c59e5e5a1e2433055f1625d75ff99f0540d0a60b1261d42aa"
+         (seal/make-fingerprint {:table   :shops
+                                 :columns [[:shop/id :uuid {:primary-key? true}] [:shop/name :string]]
+                                 :sets    #{:b :a "a" 10 2 [:x 1]}
+                                 :nested  {:z {:k #{1 "1" :1}} :a [{:q 1 :p 2}]}}))))
+
 (def ^:private shops
   {:table      :shops
    :columns    [[:shop/id   :uuid   {:primary-key? true :default :random-uuid}]

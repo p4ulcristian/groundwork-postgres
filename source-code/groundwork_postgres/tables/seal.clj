@@ -32,8 +32,16 @@
    (java.nio.charset StandardCharsets)
    (java.security MessageDigest)))
 
-(defn- order-by-printed [xs]
-  (sort-by pr-str xs))
+(defn- order-by-printed
+  "`xs` in the order of how each prints. Each is printed once: (sort-by
+   pr-str xs) printed both sides of every comparison, about half of an app's
+   start on a large app. Same order (a stable sort on the same strings), so
+   every fingerprint stays the same."
+  [xs]
+  (->> xs
+       (map (juxt pr-str identity))
+       (sort-by first)
+       (map second)))
 
 (defn make-canonical
   "The data in one order: every map a sorted vector of [key value], every
